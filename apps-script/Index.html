@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <?!= include('Stylesheet'); ?>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+  <div id="app">
+
+    <div class="masthead">
+      <div>
+        <h1>인트윈 대시보드</h1>
+        <div class="subtitle" id="page-subtitle">업무 도구 모음</div>
+      </div>
+      <div class="updated">
+        조회 시각<br>
+        <span id="updated-at">불러오는 중…</span>
+      </div>
+    </div>
+
+    <div class="tab-nav">
+      <button class="tab-btn active" data-tab="home">홈</button>
+      <button class="tab-btn" data-tab="performance">실적검색</button>
+      <button class="tab-btn" data-tab="hr">인력현황</button>
+    </div>
+
+    <!-- ============ 홈 ============ -->
+    <div class="panel" id="panel-home">
+      <div class="home-grid">
+        <div class="home-card" data-tab="performance">
+          <div class="home-card-top">
+            <div class="home-card-title">실적검색</div>
+            <span class="status-badge live">운영 중</span>
+          </div>
+          <div class="home-card-desc">제안서 작성 참고용 실적증빙리스트 검색 및 통계</div>
+        </div>
+        <div class="home-card" data-tab="hr">
+          <div class="home-card-top">
+            <div class="home-card-title">인력현황</div>
+            <span class="status-badge live">운영 중</span>
+          </div>
+          <div class="home-card-desc">부서·직위·경력 현황 조회 및 인사정보 상세보기</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 실적검색 ============ -->
+    <div class="panel" id="panel-performance" style="display:none">
+      <div class="composition">
+        <div class="composition-label">
+          <span>분야 구성 (클릭하면 해당 분야만 필터링)</span>
+        </div>
+        <div class="composition-bar" id="composition-bar"></div>
+        <div class="composition-legend" id="composition-legend"></div>
+      </div>
+
+      <div class="dashboard">
+        <div class="stat-stack">
+          <div class="card stat-card">
+            <div class="stat-label">표시된 실적 건수</div>
+            <div class="stat-value" id="stat-total">–</div>
+          </div>
+          <div class="card stat-card">
+            <div class="stat-label">계약금액 합계</div>
+            <div class="stat-value" id="stat-amount">–</div>
+          </div>
+          <div class="card stat-card">
+            <div class="stat-label">발주처 수</div>
+            <div class="stat-value" id="stat-orgs">–</div>
+          </div>
+        </div>
+
+        <div class="card chart-card">
+          <div class="chart-title">분야별 건수</div>
+          <div class="chart-body"><canvas id="field-chart"></canvas></div>
+        </div>
+
+        <div class="card chart-card">
+          <div class="chart-title">연도별 계약금액 추이 (억 원)</div>
+          <div class="chart-body"><canvas id="year-chart"></canvas></div>
+        </div>
+      </div>
+
+      <div class="filters">
+        <input type="text" id="search-input" placeholder="과업명 · 용역개요 키워드 검색">
+        <input type="text" id="org-input" placeholder="발주처">
+        <select id="field-select">
+          <option value="">전체 분야</option>
+        </select>
+        <select id="year-select">
+          <option value="">전체 연도</option>
+        </select>
+        <select id="sort-select">
+          <option value="year_desc">최신 연도순</option>
+          <option value="year_asc">오래된 연도순</option>
+          <option value="amount_desc">금액 높은순</option>
+          <option value="amount_asc">금액 낮은순</option>
+          <option value="name_asc">과업명 가나다순</option>
+        </select>
+        <button class="reset-btn" id="reset-btn">필터 초기화</button>
+      </div>
+
+      <div class="result-count" id="result-count"></div>
+
+      <div class="ledger" id="ledger">
+        <div class="empty-state">데이터를 불러오는 중…</div>
+      </div>
+    </div>
+
+    <!-- ============ 인력현황 ============ -->
+    <div class="panel" id="panel-hr" style="display:none">
+      <div class="composition">
+        <div class="composition-label">
+          <span>부서 구성 (클릭하면 해당 부서만 필터링)</span>
+        </div>
+        <div class="composition-bar" id="hr-dept-bar"></div>
+        <div class="composition-legend" id="hr-dept-legend"></div>
+      </div>
+
+      <div class="hr-stats">
+        <div class="card stat-card">
+          <div class="stat-label">총원</div>
+          <div class="stat-value" id="hr-stat-total">–</div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-label">재직(상근)</div>
+          <div class="stat-value" id="hr-stat-fulltime">–</div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-label">재직(비상근)</div>
+          <div class="stat-value" id="hr-stat-parttime">–</div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-label">휴직</div>
+          <div class="stat-value" id="hr-stat-leave">–</div>
+        </div>
+      </div>
+
+      <div class="filters">
+        <input type="text" id="hr-search-input" placeholder="이름 검색">
+        <select id="hr-dept-select">
+          <option value="">전체 부서</option>
+        </select>
+        <select id="hr-status-select">
+          <option value="">전체 재직상태</option>
+          <option value="재직(상근)">재직(상근)</option>
+          <option value="재직(비상근)">재직(비상근)</option>
+          <option value="휴직">휴직</option>
+        </select>
+        <button class="reset-btn" id="hr-reset-btn">필터 초기화</button>
+      </div>
+
+      <div class="result-count" id="hr-result-count"></div>
+
+      <div class="ledger" id="hr-list">
+        <div class="empty-state">데이터를 불러오는 중…</div>
+      </div>
+      <div class="privacy-note">개인정보(생년월일 · 학력 · 집주소 · 이메일 · 전화번호)는 각 항목을 클릭하면 열리는 상세보기에서만 표시됩니다.</div>
+    </div>
+
+  </div>
+
+  <?!= include('JavaScript'); ?>
+</body>
+</html>
