@@ -1,0 +1,530 @@
+<style>
+  /* ============================================================
+     인트윈 대시보드 — ShelfAlign Backoffice 디자인 이식
+     shadcn/ui "new-york" · base color zinc
+     C:\dev\comp_lib\web\apps\backoffice\src\index.css 의 토큰을
+     Tailwind 없이 순수 CSS로 옮긴 것.
+     클래스 이름은 기존 그대로라 Index.html 은 수정 불필요.
+     ============================================================ */
+
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap');
+  @import url('https://cdn.jsdelivr.net/gh/spoqa/spoqa-han-sans@latest/css/SpoqaHanSansNeo.css');
+
+  :root {
+    /* ---- shadcn zinc 토큰 (원본 index.css 그대로) ---- */
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.141 0.005 285.823);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.141 0.005 285.823);
+    --primary: oklch(0.21 0.006 285.885);
+    --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.967 0.001 286.375);
+    --muted: oklch(0.967 0.001 286.375);
+    --muted-foreground: oklch(0.552 0.016 285.938);
+    --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.92 0.004 286.32);
+    --input: oklch(0.92 0.004 286.32);
+    --ring: oklch(0.705 0.015 286.067);
+    --page: #f4f4f5;          /* 원본 #root 배경 */
+
+    --radius: 0.625rem;
+    --radius-sm: calc(var(--radius) - 4px);
+    --radius-md: calc(var(--radius) - 2px);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) + 4px);
+
+    --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+
+    --sans: "Inter", "Spoqa Han Sans Neo", -apple-system, BlinkMacSystemFont,
+            system-ui, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+    --mono: "Fira Code", "SF Mono", "Roboto Mono", Menlo, Consolas, monospace;
+
+    /* ---- 분야별 카테고리 색상 ----
+       검증 완료: 6개 슬롯 전부 PASS (명도대역 / 채도 / 색각이상 분리 ΔE 9.1 /
+       일반시야 ΔE 19.6). '미분류'는 계열색이 아닌 회색 기타 버킷.
+       ⚠ 순서가 곧 색각 안전장치입니다. 임의로 섞지 마세요. */
+    --field-edu:      #2a78d6;  /* 1 blue    교육 */
+    --field-startup:  #eb6834;  /* 2 orange  스타트업 지원 */
+    --field-event:    #1baf7a;  /* 3 aqua    행사 기획·운영 */
+    --field-promo:    #eda100;  /* 4 yellow  홍보/마케팅 */
+    --field-it:       #e87ba4;  /* 5 magenta IT 플랫폼 운영 */
+    --field-region:   #008300;  /* 6 green   지역 브랜딩 */
+    --field-none:     #898781;  /* 기타(미분류) — 회색, 계열색 아님 */
+
+    /* ⚠ JavaScript.html 이 resolveColor('var(--accent)') 로 참조합니다.
+       shadcn 원본에서 --accent 는 hover 배경색이지만, 여기서는 기존 코드
+       호환을 위해 '브랜드 강조색'(= primary)으로 둡니다.
+       hover 배경이 필요하면 --muted 를 쓰세요. */
+    --accent: oklch(0.21 0.006 285.885);
+    --accent-soft: oklch(0.967 0.001 286.375);
+  }
+
+  * { box-sizing: border-box; border-color: var(--border); }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--page);
+    color: var(--foreground);
+    font-family: var(--sans);
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: inherit; text-decoration: none; }
+
+  #app { max-width: 1180px; margin: 0 auto; padding: 0 24px 96px; }
+
+  /* ---------- Header (원본 Header.tsx: h-16 / mono logo) ---------- */
+  .masthead {
+    height: 64px;
+    padding-top: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+  }
+
+  .masthead h1 {
+    font-family: var(--mono);
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    margin: 0;
+  }
+
+  .masthead .subtitle {
+    font-size: 13px;
+    color: var(--muted-foreground);
+    margin-top: 4px;
+  }
+
+  .masthead .updated {
+    font-size: 12px;
+    color: var(--muted-foreground);
+    text-align: right;
+    line-height: 1.5;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- Tabs (shadcn tabs: muted pill + white active) ---------- */
+  .tab-nav {
+    display: inline-flex;
+    align-items: center;
+    height: 36px;
+    padding: 3px;
+    gap: 0;
+    background: var(--muted);
+    border-radius: var(--radius-lg);
+    margin: 12px 0 24px;
+  }
+
+  .tab-btn {
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--foreground);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    height: calc(100% - 1px);
+    padding: 0 14px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color .15s ease, box-shadow .15s ease, background-color .15s ease;
+  }
+  .tab-btn:hover { color: var(--foreground); }
+  .tab-btn.active {
+    background: var(--background);
+    box-shadow: var(--shadow-sm);
+  }
+  .tab-btn:focus-visible {
+    outline: none;
+    border-color: var(--ring);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+  }
+
+  /* ---------- Card (shadcn Card: rounded-xl border py-6 shadow-sm) ---------- */
+  .card {
+    background: var(--card);
+    color: var(--card-foreground);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-sm);
+    padding: 20px;
+  }
+
+  /* ---------- Home ---------- */
+  .home-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+  }
+
+  .home-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-sm);
+    padding: 22px 24px;
+    cursor: pointer;
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  .home-card:hover {
+    border-color: var(--primary);
+    box-shadow: 0 4px 12px -2px rgb(0 0 0 / 0.08);
+  }
+
+  .home-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .home-card-title { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+
+  .home-card-desc {
+    font-size: 13px;
+    color: var(--muted-foreground);
+    line-height: 1.55;
+  }
+
+  /* ---------- Badge (shadcn: rounded-full px-2 py-0.5 text-xs) ---------- */
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid transparent;
+    border-radius: 9999px;
+    padding: 2px 9px;
+    font-size: 11.5px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .status-badge.live { background: var(--primary); color: var(--primary-foreground); }
+  .status-badge.planned { background: var(--secondary); color: var(--muted-foreground); }
+
+  .consortium-badge {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--border);
+    border-radius: 9999px;
+    padding: 1px 8px;
+    margin-left: 8px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--muted-foreground);
+    vertical-align: middle;
+  }
+
+  /* ---------- Composition bar ---------- */
+  .composition { margin-bottom: 24px; }
+
+  .composition-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--muted-foreground);
+    margin-bottom: 8px;
+  }
+
+  .composition-bar {
+    display: flex;
+    width: 100%;
+    height: 28px;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: var(--muted);
+  }
+
+  /* 세그먼트 사이 2px 서피스 갭 — 폭을 바꾸지 않도록 inset shadow 사용 */
+  .composition-seg {
+    height: 100%;
+    min-width: 3px;
+    cursor: pointer;
+    transition: opacity .15s ease;
+    box-shadow: inset -2px 0 0 var(--card);
+  }
+  .composition-seg:last-child { box-shadow: none; }
+  .composition-seg:hover { opacity: .8; }
+  .composition-seg.dim { opacity: .28; }
+
+  .composition-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 18px;
+    margin-top: 10px;
+    font-size: 12.5px;
+  }
+
+  .composition-legend .item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    cursor: pointer;
+    color: var(--muted-foreground);
+    padding: 2px 0;
+  }
+  .composition-legend .item:hover { color: var(--foreground); }
+  .composition-legend .item.active { color: var(--foreground); font-weight: 600; }
+  .composition-legend .swatch {
+    width: 10px; height: 10px; border-radius: 3px; flex: none;
+  }
+
+  /* ---------- Stat + chart ---------- */
+  .dashboard {
+    display: grid;
+    grid-template-columns: 220px 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 28px;
+  }
+
+  .stat-stack { display: flex; flex-direction: column; gap: 16px; }
+
+  .stat-card .stat-label {
+    font-size: 12.5px;
+    color: var(--muted-foreground);
+    margin-bottom: 8px;
+  }
+
+  .stat-card .stat-value {
+    font-size: 30px;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .stat-card .stat-value .unit {
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--muted-foreground);
+    margin-left: 4px;
+  }
+
+  .chart-card { display: flex; flex-direction: column; }
+
+  .chart-card .chart-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--foreground);
+    margin-bottom: 4px;
+  }
+
+  .chart-card .chart-body { flex: 1; position: relative; min-height: 190px; }
+
+  .hr-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  /* ---------- Filters (shadcn input/select/button) ---------- */
+  .filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+
+  .filters input[type="text"],
+  .filters select {
+    font-family: inherit;
+    font-size: 13px;
+    height: 36px;
+    color: var(--foreground);
+    background: var(--background);
+    border: 1px solid var(--input);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-xs);
+    padding: 0 10px;
+    outline: none;
+    transition: box-shadow .15s ease, border-color .15s ease;
+  }
+
+  .filters input[type="text"] { flex: 1 1 220px; min-width: 160px; }
+  .filters input[type="text"]::placeholder { color: var(--muted-foreground); }
+
+  .filters input[type="text"]:focus,
+  .filters select:focus {
+    border-color: var(--ring);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+  }
+
+  /* shadcn Button — outline variant, size default (h-9 px-4) */
+  .filters .reset-btn {
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    height: 36px;
+    padding: 0 16px;
+    color: var(--foreground);
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-xs);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color .15s ease;
+  }
+  .filters .reset-btn:hover { background: var(--muted); }
+
+  .result-count {
+    font-size: 13px;
+    color: var(--muted-foreground);
+    margin-bottom: 10px;
+  }
+  .result-count b { color: var(--foreground); font-variant-numeric: tabular-nums; }
+
+  /* ---------- Ledger (shadcn Table 어법: 행 border-b, hover muted) ---------- */
+  .ledger {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+  }
+
+  .ledger-row {
+    border-bottom: 1px solid var(--border);
+    padding: 12px 16px;
+    cursor: pointer;
+    transition: background-color .12s ease;
+  }
+  .ledger-row:last-child { border-bottom: none; }
+  .ledger-row:hover { background: color-mix(in oklab, var(--muted) 60%, transparent); }
+
+  .ledger-row-main {
+    display: grid;
+    grid-template-columns: 4px 74px 1fr 160px 130px 24px;
+    gap: 14px;
+    align-items: center;
+  }
+
+  .ledger-row-main.hr-cols {
+    grid-template-columns: 4px 1fr 110px 110px 130px 24px;
+  }
+
+  .field-tag-bar { width: 4px; height: 32px; border-radius: 9999px; }
+
+  .ledger-year {
+    font-size: 13px;
+    color: var(--muted-foreground);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ledger-main-text .task-name {
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.4;
+    margin-bottom: 2px;
+  }
+
+  .ledger-main-text .org-name {
+    font-size: 12.5px;
+    color: var(--muted-foreground);
+  }
+
+  .field-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    color: var(--muted-foreground);
+    white-space: nowrap;
+  }
+  .field-tag .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+
+  .ledger-amount {
+    font-size: 13px;
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .expand-caret {
+    font-size: 10px;
+    color: var(--muted-foreground);
+    text-align: center;
+    transition: transform .15s ease;
+  }
+  .ledger-row.open .expand-caret { transform: rotate(90deg); }
+
+  .ledger-detail {
+    display: none;
+    padding: 12px 0 4px 18px;
+    font-size: 13px;
+    color: var(--muted-foreground);
+    line-height: 1.6;
+  }
+  .ledger-row.open .ledger-detail { display: block; }
+
+  .ledger-detail .detail-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 8px 24px;
+    margin-top: 10px;
+    font-size: 12.5px;
+  }
+  .ledger-detail .detail-grid > div {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 8px 10px;
+    background: var(--background);
+  }
+  .ledger-detail .detail-grid div b {
+    display: block;
+    color: var(--muted-foreground);
+    font-size: 11.5px;
+    font-weight: 400;
+    margin-bottom: 3px;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 64px 20px;
+    color: var(--muted-foreground);
+    font-size: 13.5px;
+  }
+
+  .privacy-note {
+    font-size: 12px;
+    color: var(--muted-foreground);
+    margin-top: 16px;
+    text-align: center;
+  }
+
+  /* ---------- Responsive ---------- */
+  @media (max-width: 900px) {
+    .dashboard { grid-template-columns: 1fr; }
+    .stat-stack { flex-direction: row; flex-wrap: wrap; }
+    .stat-stack .card { flex: 1 1 150px; }
+  }
+
+  @media (max-width: 720px) {
+    #app { padding: 0 16px 72px; }
+    .hr-stats { grid-template-columns: repeat(2, 1fr); }
+    .tab-nav { display: flex; width: 100%; }
+    .tab-btn { flex: 1; padding: 0 8px; }
+    .ledger-row-main,
+    .ledger-row-main.hr-cols {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .field-tag-bar { align-self: stretch; height: auto; margin-right: 4px; }
+    .ledger-year { display: none; }
+    .ledger-main-text { flex: 1 1 100%; order: 1; }
+    .field-tag { order: 2; }
+    .ledger-amount { order: 3; margin-left: auto; }
+    .expand-caret { order: 4; }
+  }
+</style>

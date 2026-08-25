@@ -1,0 +1,582 @@
+<script>
+  const FIELD_COLORS = {
+    '교육': 'var(--field-edu)',
+    '스타트업 지원': 'var(--field-startup)',
+    '행사 기획·운영': 'var(--field-event)',
+    '홍보/마케팅': 'var(--field-promo)',
+    'IT 플랫폼 운영': 'var(--field-it)',
+    '지역 브랜딩/상권활성화': 'var(--field-region)',
+    '미분류': 'var(--field-none)',
+  };
+  const FIELD_ORDER = Object.keys(FIELD_COLORS);
+
+  // 차트 크롬 — Stylesheet.html 의 shadcn zinc 토큰과 같은 값
+  const CHART_FONT = 'Inter';
+  const CHART_GRID = '#e4e4e7';    // --border
+  const CHART_TICK = '#71717b';    // --muted-foreground
+  const CHART_SURFACE = '#ffffff'; // --card (조각 사이 간격용)
+
+  let ALL_RECORDS = [];
+  let activeFieldFilter = null; // clicking legend/composition toggles this
+  let fieldChart, yearChart;
+
+  const STATUS_COLORS = {
+    '재직(상근)': 'var(--accent)',
+    '재직(비상근)': 'var(--field-edu)',
+    '휴직': 'var(--field-none)',
+  };
+  const DEPT_COLOR_PALETTE = [
+    'var(--field-edu)', 'var(--field-startup)', 'var(--field-event)',
+    'var(--field-promo)', 'var(--field-it)', 'var(--field-region)',
+    'var(--accent)', 'var(--field-none)',
+  ];
+  const TAB_SUBTITLES = {
+    home: '업무 도구 모음',
+    performance: '제안서 작성 참고용 · 실적증빙리스트 연동',
+    hr: '조직 구성 및 인사정보 조회 · 개인정보는 상세보기에서만 노출',
+  };
+
+  let ALL_HR_RECORDS = [];
+  let activeHRDeptFilter = null;
+  let DEPT_COLORS = {};
+
+  function resolveColor(varExpr) {
+    // "var(--field-edu)" -> 실제 계산된 색상값
+    const el = document.createElement('div');
+    el.style.color = varExpr;
+    document.body.appendChild(el);
+    const rgb = getComputedStyle(el).color;
+    document.body.removeChild(el);
+    return rgb;
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    initTabs();
+    google.script.run.withSuccessHandler(onDataLoaded).withFailureHandler(onLoadError).getPerformanceData();
+    google.script.run.withSuccessHandler(onHRDataLoaded).withFailureHandler(onHRLoadError).getHRData();
+  });
+
+  function initTabs() {
+    document.querySelectorAll('.tab-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () { switchTab(btn.dataset.tab); });
+    });
+    document.querySelectorAll('.home-card').forEach(function (card) {
+      card.addEventListener('click', function () { switchTab(card.dataset.tab); });
+    });
+  }
+
+  function switchTab(tab) {
+    document.querySelectorAll('.tab-btn').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.tab === tab);
+    });
+    document.querySelectorAll('.panel').forEach(function (p) { p.style.display = 'none'; });
+    document.getElementById('panel-' + tab).style.display = '';
+    document.getElementById('page-subtitle').textContent = TAB_SUBTITLES[tab] || '';
+  }
+
+  function onLoadError(err) {
+    document.getElementById('ledger').innerHTML =
+      '<div class="empty-state">데이터를 불러오지 못했습니다.<br>' + (err.message || err) + '</div>';
+  }
+
+  function onDataLoaded(records) {
+    if (!records || !Array.isArray(records)) {
+      onLoadError(new Error('서버 응답이 비어있습니다. Apps Script 실행 기록을 확인해주세요.'));
+      return;
+    }
+    ALL_RECORDS = records;
+    populateYearFilter(records);
+    populateFieldFilter(records);
+    document.getElementById('updated-at').textContent =
+      new Date().toLocaleString('ko-KR', { hour12: false });
+
+    ['search-input', 'field-select', 'year-select', 'org-input'].forEach(function (id) {
+      document.getElementById(id).addEventListener('input', renderAll);
+    });
+    document.getElementById('sort-select').addEventListener('change', renderAll);
+    document.getElementById('reset-btn').addEventListener('click', function () {
+      document.getElementById('search-input').value = '';
+      document.getElementById('org-input').value = '';
+      document.getElementById('field-select').value = '';
+      document.getElementById('year-select').value = '';
+      activeFieldFilter = null;
+      renderAll();
+    });
+
+    renderAll();
+  }
+
+  function populateYearFilter(records) {
+    const years = Array.from(new Set(records.map(function (r) { return r.year; })))
+      .filter(Boolean)
+      .sort(function (a, b) { return b - a; });
+    const sel = document.getElementById('year-select');
+    years.forEach(function (y) {
+      const opt = document.createElement('option');
+      opt.value = y;
+      opt.textContent = y + '년';
+      sel.appendChild(opt);
+    });
+  }
+
+  function populateFieldFilter(records) {
+    const sel = document.getElementById('field-select');
+    FIELD_ORDER.forEach(function (f) {
+      if (!records.some(function (r) { return r.field === f; })) return;
+      const opt = document.createElement('option');
+      opt.value = f;
+      opt.textContent = f;
+      sel.appendChild(opt);
+    });
+  }
+
+  function currentFilters() {
+    return {
+      q: document.getElementById('search-input').value.trim().toLowerCase(),
+      org: document.getElementById('org-input').value.trim().toLowerCase(),
+      field: document.getElementById('field-select').value || activeFieldFilter || '',
+      year: document.getElementById('year-select').value,
+    };
+  }
+
+  function applyFilters(records, f) {
+    return records.filter(function (r) {
+      if (f.field && r.field !== f.field) return false;
+      if (f.year && String(r.year) !== String(f.year)) return false;
+      if (f.org && !(String(r.org).toLowerCase().indexOf(f.org) > -1)) return false;
+      if (f.q) {
+        const hay = (r.taskName + ' ' + r.desc + ' ' + r.org).toLowerCase();
+        if (hay.indexOf(f.q) === -1) return false;
+      }
+      return true;
+    });
+  }
+
+  function renderAll() {
+    const f = currentFilters();
+    // 필터 select에서 분야가 선택되면 activeFieldFilter(막대 클릭 상태)와 동기화
+    if (document.getElementById('field-select').value) {
+      activeFieldFilter = document.getElementById('field-select').value;
+    }
+    const filtered = applyFilters(ALL_RECORDS, f);
+
+    renderStats(filtered);
+    renderComposition(ALL_RECORDS, f.field); // 구성비는 항상 전체 기준, 선택 강조만 반영
+    renderCharts(filtered);
+    renderLedger(filtered);
+
+    document.getElementById('result-count').innerHTML =
+      '<b>' + filtered.length.toLocaleString() + '</b>건 표시 중 (전체 ' + ALL_RECORDS.length.toLocaleString() + '건)';
+  }
+
+  function renderStats(records) {
+    const total = records.length;
+    const amountSum = records.reduce(function (s, r) { return s + (r.amount || 0); }, 0);
+    const orgSet = new Set(records.map(function (r) { return r.org; }).filter(Boolean));
+    document.getElementById('stat-total').textContent = total.toLocaleString();
+    document.getElementById('stat-amount').textContent = formatEok(amountSum);
+    document.getElementById('stat-orgs').textContent = orgSet.size.toLocaleString();
+  }
+
+  function formatEok(won) {
+    if (!won) return '0';
+    const eok = won / 100000000;
+    if (eok >= 1) return eok.toFixed(1) + '억';
+    return Math.round(won / 10000).toLocaleString() + '만';
+  }
+
+  function renderComposition(records, selectedField) {
+    const counts = {};
+    FIELD_ORDER.forEach(function (f) { counts[f] = 0; });
+    records.forEach(function (r) { counts[r.field] = (counts[r.field] || 0) + 1; });
+    const total = records.length || 1;
+
+    const bar = document.getElementById('composition-bar');
+    const legend = document.getElementById('composition-legend');
+    bar.innerHTML = '';
+    legend.innerHTML = '';
+
+    FIELD_ORDER.forEach(function (field) {
+      const count = counts[field];
+      if (!count) return;
+      const pct = (count / total) * 100;
+
+      const seg = document.createElement('div');
+      seg.className = 'composition-seg' + (selectedField && selectedField !== field ? ' dim' : '');
+      seg.style.width = pct + '%';
+      seg.style.background = FIELD_COLORS[field];
+      seg.title = field + ' · ' + count + '건 (' + pct.toFixed(1) + '%)';
+      seg.addEventListener('click', function () { toggleFieldFilter(field); });
+      bar.appendChild(seg);
+
+      const item = document.createElement('div');
+      item.className = 'item' + (selectedField === field ? ' active' : '');
+      item.innerHTML =
+        '<span class="swatch" style="background:' + FIELD_COLORS[field] + '"></span>' +
+        field + ' ' + count + '건';
+      item.addEventListener('click', function () { toggleFieldFilter(field); });
+      legend.appendChild(item);
+    });
+  }
+
+  function toggleFieldFilter(field) {
+    const sel = document.getElementById('field-select');
+    if (sel.value === field) {
+      sel.value = '';
+      activeFieldFilter = null;
+    } else {
+      sel.value = field;
+      activeFieldFilter = field;
+    }
+    renderAll();
+  }
+
+  function renderCharts(records) {
+    // 분야별 건수 도넛
+    const counts = {};
+    FIELD_ORDER.forEach(function (f) { counts[f] = 0; });
+    records.forEach(function (r) { counts[r.field] = (counts[r.field] || 0) + 1; });
+    const labels = FIELD_ORDER.filter(function (f) { return counts[f] > 0; });
+    const data = labels.map(function (f) { return counts[f]; });
+    const colors = labels.map(function (f) { return resolveColor(FIELD_COLORS[f]); });
+
+    const fieldCtx = document.getElementById('field-chart').getContext('2d');
+    if (fieldChart) fieldChart.destroy();
+    fieldChart = new Chart(fieldCtx, {
+      type: 'doughnut',
+      data: {
+        labels: labels,
+        // 조각 사이 2px 서피스 갭 — 인접한 색이 맞붙지 않도록
+        datasets: [{ data: data, backgroundColor: colors, borderWidth: 2, borderColor: CHART_SURFACE }],
+      },
+      options: {
+        maintainAspectRatio: false,
+        cutout: '62%',
+        plugins: {
+          legend: { display: false },
+          tooltip: { titleFont: { family: CHART_FONT }, bodyFont: { family: CHART_FONT } },
+        },
+        onClick: function (evt, elements) {
+          if (elements.length) toggleFieldFilter(labels[elements[0].index]);
+        },
+      },
+    });
+
+    // 연도별 계약금액 추이
+    const byYear = {};
+    records.forEach(function (r) {
+      if (!r.year) return;
+      byYear[r.year] = (byYear[r.year] || 0) + (r.amount || 0);
+    });
+    const years = Object.keys(byYear).sort();
+    const amounts = years.map(function (y) { return Math.round(byYear[y] / 100000000 * 10) / 10; });
+
+    const yearCtx = document.getElementById('year-chart').getContext('2d');
+    if (yearChart) yearChart.destroy();
+    yearChart = new Chart(yearCtx, {
+      type: 'bar',
+      data: {
+        labels: years,
+        datasets: [{
+          data: amounts,
+          backgroundColor: resolveColor('var(--accent)'),
+          borderRadius: 4,
+          maxBarThickness: 28,
+        }],
+      },
+      options: {
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: { label: function (ctx) { return ctx.parsed.y + '억 원'; } },
+            titleFont: { family: CHART_FONT }, bodyFont: { family: CHART_FONT },
+          },
+        },
+        scales: {
+          y: {
+            ticks: {
+              callback: function (v) { return v + '억'; },
+              font: { family: CHART_FONT, size: 11 },
+              color: CHART_TICK,
+            },
+            grid: { color: CHART_GRID },
+            border: { display: false },
+          },
+          x: {
+            ticks: { font: { family: CHART_FONT, size: 11 }, color: CHART_TICK },
+            grid: { display: false },
+            border: { color: CHART_GRID },
+          },
+        },
+      },
+    });
+  }
+
+  function renderLedger(records) {
+    const wrap = document.getElementById('ledger');
+    wrap.innerHTML = '';
+
+    if (!records.length) {
+      wrap.innerHTML = '<div class="empty-state">조건에 맞는 실적이 없습니다. 필터를 조정해보세요.</div>';
+      return;
+    }
+
+    const sortMode = document.getElementById('sort-select').value;
+    const sorted = records.slice().sort(function (a, b) {
+      switch (sortMode) {
+        case 'year_asc':
+          return (Number(a.year) || 0) - (Number(b.year) || 0) || (Number(a.no) || 0) - (Number(b.no) || 0);
+        case 'amount_desc':
+          return (Number(b.amount) || 0) - (Number(a.amount) || 0);
+        case 'amount_asc':
+          return (Number(a.amount) || 0) - (Number(b.amount) || 0);
+        case 'name_asc':
+          return String(a.taskName || '').localeCompare(String(b.taskName || ''), 'ko');
+        case 'year_desc':
+        default: {
+          const yearDiff = (Number(b.year) || 0) - (Number(a.year) || 0);
+          if (yearDiff !== 0) return yearDiff;
+          return (Number(b.no) || 0) - (Number(a.no) || 0);
+        }
+      }
+    });
+
+    sorted.forEach(function (r) {
+      const row = document.createElement('div');
+      row.className = 'ledger-row';
+
+      const amountText = r.amount ? (r.amount / 10000).toLocaleString() + '만원' : (r.amountRaw || '-');
+      const consortiumBadge = r.isConsortium
+        ? '<span class="consortium-badge">컨소시엄 · 지분 ' + r.sharePct + '%</span>'
+        : '';
+
+      row.innerHTML =
+        '<div class="ledger-row-main">' +
+          '<div class="field-tag-bar" style="background:' + (FIELD_COLORS[r.field] || FIELD_COLORS['미분류']) + '"></div>' +
+          '<div class="ledger-year">' + (r.year || '-') + '</div>' +
+          '<div class="ledger-main-text">' +
+            '<div class="task-name">' + escapeHtml(r.taskName) + consortiumBadge + '</div>' +
+            '<div class="org-name">' + escapeHtml(r.org || '') + '</div>' +
+          '</div>' +
+          '<div class="field-tag"><span class="dot" style="background:' + (FIELD_COLORS[r.field] || FIELD_COLORS['미분류']) + '"></span>' + escapeHtml(r.field) + '</div>' +
+          '<div class="ledger-amount">' + amountText + '</div>' +
+          '<div class="expand-caret">▶</div>' +
+        '</div>' +
+        '<div class="ledger-detail">' +
+          escapeHtml(r.desc || '용역 개요 정보 없음') +
+          '<div class="detail-grid">' +
+            '<div><b>계약일자</b>' + escapeHtml(r.contractDate || '-') + '</div>' +
+            '<div><b>계약기간</b>' + escapeHtml(r.contractPeriod || '-') + '</div>' +
+            '<div><b>사업부서</b>' + escapeHtml(r.dept || '-') + '</div>' +
+            '<div><b>실적증명 상태</b>' + escapeHtml(r.status || '-') + '</div>' +
+            (r.isConsortium
+              ? '<div><b>전체계약금액</b>' + (r.totalAmount ? (r.totalAmount / 10000).toLocaleString() + '만원' : '-') + ' (지분 ' + r.sharePct + '%)</div>'
+              : '') +
+          '</div>' +
+        '</div>';
+
+      row.querySelector('.ledger-row-main').addEventListener('click', function () {
+        row.classList.toggle('open');
+      });
+
+      wrap.appendChild(row);
+    });
+  }
+
+  function escapeHtml(str) {
+    return String(str == null ? '' : str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  // ================= 인력현황 =================
+
+  function onHRLoadError(err) {
+    document.getElementById('hr-list').innerHTML =
+      '<div class="empty-state">인력 데이터를 불러오지 못했습니다.<br>' + (err.message || err) + '</div>';
+  }
+
+  function onHRDataLoaded(records) {
+    if (!records || !Array.isArray(records)) {
+      onHRLoadError(new Error('서버 응답이 비어있습니다. Apps Script 실행 기록을 확인해주세요.'));
+      return;
+    }
+    ALL_HR_RECORDS = records;
+    assignDeptColors(records);
+    populateHRDeptFilter(records);
+
+    document.getElementById('hr-search-input').addEventListener('input', renderHRAll);
+    document.getElementById('hr-dept-select').addEventListener('change', renderHRAll);
+    document.getElementById('hr-status-select').addEventListener('change', renderHRAll);
+    document.getElementById('hr-reset-btn').addEventListener('click', function () {
+      document.getElementById('hr-search-input').value = '';
+      document.getElementById('hr-dept-select').value = '';
+      document.getElementById('hr-status-select').value = '';
+      activeHRDeptFilter = null;
+      renderHRAll();
+    });
+
+    renderHRAll();
+  }
+
+  function assignDeptColors(records) {
+    const depts = Array.from(new Set(records.map(function (r) { return r.dept; })))
+      .filter(Boolean)
+      .sort(function (a, b) { return a.localeCompare(b, 'ko'); });
+    DEPT_COLORS = {};
+    depts.forEach(function (d, i) { DEPT_COLORS[d] = DEPT_COLOR_PALETTE[i % DEPT_COLOR_PALETTE.length]; });
+  }
+
+  function populateHRDeptFilter(records) {
+    const sel = document.getElementById('hr-dept-select');
+    Object.keys(DEPT_COLORS).forEach(function (d) {
+      const opt = document.createElement('option');
+      opt.value = d;
+      opt.textContent = d;
+      sel.appendChild(opt);
+    });
+  }
+
+  function currentHRFilters() {
+    return {
+      q: document.getElementById('hr-search-input').value.trim().toLowerCase(),
+      dept: document.getElementById('hr-dept-select').value || activeHRDeptFilter || '',
+      status: document.getElementById('hr-status-select').value,
+    };
+  }
+
+  function applyHRFilters(records, f) {
+    return records.filter(function (r) {
+      if (f.dept && r.dept !== f.dept) return false;
+      if (f.status && r.status !== f.status) return false;
+      if (f.q && String(r.name || '').toLowerCase().indexOf(f.q) === -1) return false;
+      return true;
+    });
+  }
+
+  function renderHRAll() {
+    const f = currentHRFilters();
+    if (document.getElementById('hr-dept-select').value) {
+      activeHRDeptFilter = document.getElementById('hr-dept-select').value;
+    }
+    const filtered = applyHRFilters(ALL_HR_RECORDS, f);
+
+    renderHRStats(filtered);
+    renderHRDeptComposition(ALL_HR_RECORDS, f.dept);
+    renderHRList(filtered);
+
+    document.getElementById('hr-result-count').innerHTML =
+      '<b>' + filtered.length.toLocaleString() + '</b>명 표시 중 (전체 ' + ALL_HR_RECORDS.length.toLocaleString() + '명)';
+  }
+
+  function renderHRStats(records) {
+    const counts = { '재직(상근)': 0, '재직(비상근)': 0, '휴직': 0 };
+    records.forEach(function (r) { if (counts[r.status] !== undefined) counts[r.status]++; });
+    document.getElementById('hr-stat-total').textContent = records.length.toLocaleString();
+    document.getElementById('hr-stat-fulltime').textContent = counts['재직(상근)'].toLocaleString();
+    document.getElementById('hr-stat-parttime').textContent = counts['재직(비상근)'].toLocaleString();
+    document.getElementById('hr-stat-leave').textContent = counts['휴직'].toLocaleString();
+  }
+
+  function renderHRDeptComposition(records, selectedDept) {
+    const depts = Object.keys(DEPT_COLORS);
+    const counts = {};
+    depts.forEach(function (d) { counts[d] = 0; });
+    records.forEach(function (r) { if (r.dept) counts[r.dept] = (counts[r.dept] || 0) + 1; });
+    const total = records.length || 1;
+
+    const bar = document.getElementById('hr-dept-bar');
+    const legend = document.getElementById('hr-dept-legend');
+    bar.innerHTML = '';
+    legend.innerHTML = '';
+
+    depts.forEach(function (dept) {
+      const count = counts[dept];
+      if (!count) return;
+      const pct = (count / total) * 100;
+
+      const seg = document.createElement('div');
+      seg.className = 'composition-seg' + (selectedDept && selectedDept !== dept ? ' dim' : '');
+      seg.style.width = pct + '%';
+      seg.style.background = DEPT_COLORS[dept];
+      seg.title = dept + ' · ' + count + '명 (' + pct.toFixed(1) + '%)';
+      seg.addEventListener('click', function () { toggleHRDeptFilter(dept); });
+      bar.appendChild(seg);
+
+      const item = document.createElement('div');
+      item.className = 'item' + (selectedDept === dept ? ' active' : '');
+      item.innerHTML =
+        '<span class="swatch" style="background:' + DEPT_COLORS[dept] + '"></span>' +
+        dept + ' ' + count + '명';
+      item.addEventListener('click', function () { toggleHRDeptFilter(dept); });
+      legend.appendChild(item);
+    });
+  }
+
+  function toggleHRDeptFilter(dept) {
+    const sel = document.getElementById('hr-dept-select');
+    if (sel.value === dept) {
+      sel.value = '';
+      activeHRDeptFilter = null;
+    } else {
+      sel.value = dept;
+      activeHRDeptFilter = dept;
+    }
+    renderHRAll();
+  }
+
+  function renderHRList(records) {
+    const wrap = document.getElementById('hr-list');
+    wrap.innerHTML = '';
+
+    if (!records.length) {
+      wrap.innerHTML = '<div class="empty-state">조건에 맞는 인원이 없습니다. 필터를 조정해보세요.</div>';
+      return;
+    }
+
+    const sorted = records.slice().sort(function (a, b) {
+      return String(a.dept || '').localeCompare(String(b.dept || ''), 'ko') ||
+        String(a.name || '').localeCompare(String(b.name || ''), 'ko');
+    });
+
+    sorted.forEach(function (r) {
+      const row = document.createElement('div');
+      row.className = 'ledger-row';
+
+      const statusColor = STATUS_COLORS[r.status] || 'var(--field-none)';
+      const eduLine = [r.eduSchool, r.eduMajor, r.eduDegree].filter(Boolean).join(' ') +
+        (r.eduGradYm ? ' (' + r.eduGradYm + ' 졸업)' : '');
+
+      row.innerHTML =
+        '<div class="ledger-row-main hr-cols">' +
+          '<div class="field-tag-bar" style="background:' + statusColor + '"></div>' +
+          '<div class="ledger-main-text">' +
+            '<div class="task-name">' + escapeHtml(r.name) + '</div>' +
+            '<div class="org-name">' + escapeHtml(r.dept || '') + '</div>' +
+          '</div>' +
+          '<div class="field-tag">' + escapeHtml(r.position || '-') + '</div>' +
+          '<div class="field-tag">' + escapeHtml(r.career || '-') + '</div>' +
+          '<div class="field-tag"><span class="dot" style="background:' + statusColor + '"></span>' + escapeHtml(r.status) + '</div>' +
+          '<div class="expand-caret">▶</div>' +
+        '</div>' +
+        '<div class="ledger-detail">' +
+          '<div class="detail-grid">' +
+            '<div><b>생년월일</b>' + escapeHtml(r.birthDate || '-') + '</div>' +
+            '<div><b>최종학력</b>' + escapeHtml(eduLine.trim() || '-') + '</div>' +
+            '<div><b>집주소</b>' + escapeHtml(r.address || '-') + '</div>' +
+            '<div><b>이메일 주소</b>' + escapeHtml(r.email || '-') + '</div>' +
+            '<div><b>전화번호</b>' + escapeHtml(r.phone || '-') + '</div>' +
+            '<div><b>인트윈 입사년월일</b>' + escapeHtml(r.joinDate || '-') + '</div>' +
+          '</div>' +
+        '</div>';
+
+      row.querySelector('.ledger-row-main').addEventListener('click', function () {
+        row.classList.toggle('open');
+      });
+
+      wrap.appendChild(row);
+    });
+  }
+</script>

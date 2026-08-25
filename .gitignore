@@ -1,0 +1,14 @@
+# clasp 로그인 토큰 — 절대 커밋 금지 (구글 계정 접근 권한이 들어있음)
+.clasprc.json
+
+# 생성된 재직증명서 (개인정보 포함)
+재직증명서_*.hwpx
+샘플_재직증명서_*.hwpx
+
+# 파이썬
+__pycache__/
+*.pyc
+
+# OS
+Thumbs.db
+.DS_Store

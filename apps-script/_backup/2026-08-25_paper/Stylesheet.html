@@ -1,0 +1,452 @@
+<!--
+  [백업] 2026-08-25 이전 디자인 — "종이(paper)" 테마
+  Pretendard + 크림색 배경(#F6F4EE) + 초록 강조(#1F6F5C) + IBM Plex Mono
+  shadcn/zinc 이식본으로 교체하기 전 원본입니다. 되돌리려면 이 내용을
+  Apps Script 의 Stylesheet.html 에 그대로 붙여넣으세요.
+-->
+<style>
+  @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css');
+
+  :root {
+    --ink: #1C2434;
+    --ink-soft: #4A5468;
+    --paper: #F6F4EE;
+    --paper-raised: #FFFFFF;
+    --line: #E2DED3;
+    --accent: #1F6F5C;
+    --accent-soft: #E4EEEA;
+
+    --field-edu: #3B6E8F;
+    --field-startup: #1F6F5C;
+    --field-event: #B8892B;
+    --field-promo: #A24B72;
+    --field-it: #5B5FA6;
+    --field-region: #8A5A3B;
+    --field-none: #9A9488;
+
+    --mono: 'IBM Plex Mono', ui-monospace, monospace;
+    --sans: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: inherit; }
+
+  #app { max-width: 1180px; margin: 0 auto; padding: 28px 24px 80px; }
+
+  /* ---------- Header ---------- */
+  .masthead {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding-bottom: 18px;
+    border-bottom: 2px solid var(--ink);
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .masthead h1 {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0;
+  }
+
+  .masthead .subtitle {
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    margin-top: 4px;
+  }
+
+  .masthead .updated {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-soft);
+    text-align: right;
+  }
+
+  /* ---------- Tabs ---------- */
+  .tab-nav {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 22px;
+  }
+
+  .tab-btn {
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink-soft);
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 8px 16px;
+    cursor: pointer;
+  }
+  .tab-btn:hover { border-color: var(--accent); color: var(--ink); }
+  .tab-btn.active {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--paper-raised);
+    font-weight: 700;
+  }
+
+  /* ---------- Home ---------- */
+  .home-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+  }
+
+  .home-card {
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 18px;
+    cursor: pointer;
+    transition: border-color 0.15s ease, transform 0.15s ease;
+  }
+  .home-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+
+  .home-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .home-card-title { font-size: 15px; font-weight: 700; }
+
+  .home-card-desc {
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    line-height: 1.5;
+  }
+
+  .status-badge {
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+  }
+  .status-badge.live { background: var(--accent-soft); color: var(--accent); }
+  .status-badge.planned { background: #EDEAE0; color: var(--ink-soft); }
+
+  /* ---------- 인력현황 ---------- */
+  .hr-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 22px;
+  }
+
+  .ledger-row-main.hr-cols {
+    grid-template-columns: 4px 1fr 110px 110px 130px 24px;
+  }
+
+  .privacy-note {
+    font-size: 11.5px;
+    color: var(--ink-soft);
+    margin-top: 14px;
+    text-align: center;
+  }
+
+  @media (max-width: 720px) {
+    .hr-stats { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  /* ---------- Composition bar (signature element) ---------- */
+  .composition {
+    margin-bottom: 22px;
+  }
+
+  .composition-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11.5px;
+    color: var(--ink-soft);
+    margin-bottom: 6px;
+  }
+
+  .composition-bar {
+    display: flex;
+    width: 100%;
+    height: 26px;
+    border-radius: 3px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+  }
+
+  .composition-seg {
+    height: 100%;
+    transition: opacity 0.15s ease;
+    cursor: pointer;
+    min-width: 2px;
+  }
+  .composition-seg:hover { opacity: 0.75; }
+  .composition-seg.dim { opacity: 0.25; }
+
+  .composition-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    margin-top: 8px;
+    font-size: 12px;
+  }
+
+  .composition-legend .item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    color: var(--ink-soft);
+    padding: 2px 0;
+  }
+  .composition-legend .item.active { color: var(--ink); font-weight: 600; }
+  .composition-legend .swatch {
+    width: 9px; height: 9px; border-radius: 2px; flex: none;
+  }
+
+  /* ---------- Stat + chart row ---------- */
+  .dashboard {
+    display: grid;
+    grid-template-columns: 200px 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 26px;
+  }
+
+  .stat-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .card {
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 14px 16px;
+  }
+
+  .stat-card .stat-label {
+    font-size: 11px;
+    color: var(--ink-soft);
+    margin-bottom: 6px;
+  }
+
+  .stat-card .stat-value {
+    font-family: var(--mono);
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  .stat-card .stat-value .unit {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--ink-soft);
+    margin-left: 3px;
+  }
+
+  .chart-card {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .chart-card .chart-title {
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin-bottom: 8px;
+  }
+
+  .chart-card .chart-body { flex: 1; position: relative; min-height: 180px; }
+
+  /* ---------- Filters ---------- */
+  .filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin-bottom: 18px;
+  }
+
+  .filters input[type="text"],
+  .filters select {
+    font-family: var(--sans);
+    font-size: 13px;
+    border: 1px solid var(--line);
+    background: var(--paper);
+    color: var(--ink);
+    border-radius: 4px;
+    padding: 7px 10px;
+    outline: none;
+  }
+
+  .filters input[type="text"] {
+    flex: 1 1 220px;
+    min-width: 160px;
+  }
+
+  .filters input[type="text"]:focus,
+  .filters select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+  }
+
+  .filters .reset-btn {
+    font-family: var(--sans);
+    font-size: 12.5px;
+    color: var(--accent);
+    background: none;
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    padding: 6px 10px;
+    cursor: pointer;
+  }
+  .filters .reset-btn:hover { background: var(--accent-soft); }
+
+  .result-count {
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    margin-bottom: 10px;
+  }
+  .result-count b { color: var(--ink); font-family: var(--mono); }
+
+  /* ---------- Table ---------- */
+  .ledger {
+    border-top: 1px solid var(--ink);
+  }
+
+  .ledger-row {
+    border-bottom: 1px solid var(--line);
+    padding: 12px 4px;
+    cursor: pointer;
+  }
+  .ledger-row:hover { background: rgba(31, 111, 92, 0.045); }
+
+  .ledger-row-main {
+    display: grid;
+    grid-template-columns: 4px 78px 1fr 150px 130px 24px;
+    gap: 12px;
+    align-items: center;
+  }
+
+  .field-tag-bar { width: 4px; height: 30px; border-radius: 2px; }
+
+  .ledger-year {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--ink-soft);
+  }
+
+  .ledger-main-text .task-name {
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 3px;
+  }
+
+  .consortium-badge {
+    display: inline-block;
+    font-size: 10.5px;
+    font-weight: 500;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-radius: 3px;
+    padding: 1px 6px;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+
+  .ledger-main-text .org-name {
+    font-size: 12px;
+    color: var(--ink-soft);
+  }
+
+  .field-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11.5px;
+    color: var(--ink-soft);
+    white-space: nowrap;
+  }
+  .field-tag .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+
+  .ledger-amount {
+    font-family: var(--mono);
+    font-size: 13px;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .expand-caret {
+    font-size: 11px;
+    color: var(--ink-soft);
+    text-align: center;
+    transition: transform 0.15s ease;
+  }
+  .ledger-row.open .expand-caret { transform: rotate(90deg); }
+
+  .ledger-detail {
+    display: none;
+    padding: 10px 16px 4px 20px;
+    font-size: 13px;
+    color: var(--ink-soft);
+    line-height: 1.55;
+  }
+  .ledger-row.open .ledger-detail { display: block; }
+
+  .ledger-detail .detail-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 6px 20px;
+    margin-top: 8px;
+    font-size: 12px;
+  }
+  .ledger-detail .detail-grid div b {
+    color: var(--ink);
+    font-weight: 600;
+    margin-right: 4px;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--ink-soft);
+    font-size: 13.5px;
+  }
+
+  @media (max-width: 720px) {
+    .dashboard { grid-template-columns: 1fr; }
+    .stat-stack { flex-direction: row; flex-wrap: wrap; }
+    .stat-stack .card { flex: 1 1 140px; }
+    .ledger-row-main {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+    }
+    .field-tag-bar { width: 4px; align-self: stretch; height: auto; margin-right: 8px; }
+    .ledger-year { display: none; }
+    .ledger-main-text { flex: 1 1 100%; order: 1; }
+    .field-tag { order: 2; margin-top: 4px; }
+    .ledger-amount { order: 3; margin-top: 4px; margin-left: auto; text-align: right; }
+    .expand-caret { order: 4; margin-left: 8px; }
+  }
+</style>
