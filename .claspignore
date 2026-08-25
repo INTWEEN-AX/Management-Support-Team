@@ -1,0 +1,11 @@
+# clasp push 시 Apps Script 로 올리지 않을 것들
+# (Apps Script 는 .gs / .html / appsscript.json 만 받습니다)
+
+**/_backup/**
+_backup/**
+
+**/*.md
+**/*.py
+**/*.hwpx
+**/.git/**
+**/node_modules/**
