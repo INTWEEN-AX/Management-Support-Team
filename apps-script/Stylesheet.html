@@ -1,235 +1,341 @@
 <style>
   /* ============================================================
-     인트윈 대시보드 — ShelfAlign Backoffice 디자인 이식
-     shadcn/ui "new-york" · base color zinc
-     C:\dev\comp_lib\web\apps\backoffice\src\index.css 의 토큰을
-     Tailwind 없이 순수 CSS로 옮긴 것.
-     클래스 이름은 기존 그대로라 Index.html 은 수정 불필요.
+     인트윈 사내 데이터 포털 — 다크 네이비 + 골드
+     intwin_home.html 의 디자인을 대시보드 전체로 확장.
+     클래스 이름은 기존 것을 유지하고 포털용만 새로 추가했습니다.
      ============================================================ */
 
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap');
-  @import url('https://cdn.jsdelivr.net/gh/spoqa/spoqa-han-sans@latest/css/SpoqaHanSansNeo.css');
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap');
+  @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css');
 
   :root {
-    /* ---- shadcn zinc 토큰 (원본 index.css 그대로) ---- */
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.141 0.005 285.823);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.141 0.005 285.823);
-    --primary: oklch(0.21 0.006 285.885);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.967 0.001 286.375);
-    --muted: oklch(0.967 0.001 286.375);
-    --muted-foreground: oklch(0.552 0.016 285.938);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.92 0.004 286.32);
-    --input: oklch(0.92 0.004 286.32);
-    --ring: oklch(0.705 0.015 286.067);
-    --page: #f4f4f5;          /* 원본 #root 배경 */
+    --ink: #0B0E13;
+    --panel: #12171F;
+    --panel-2: #161C25;
+    --line: #232B36;
+    --line-soft: #1B222B;
+    --text: #E9ECEF;
+    --muted: #8A96A5;
+    --muted-2: #5C6673;
+    --gold: #D9A354;
+    --gold-soft: rgba(217, 163, 84, 0.14);
+    --gold-line: rgba(217, 163, 84, 0.35);
 
-    --radius: 0.625rem;
-    --radius-sm: calc(var(--radius) - 4px);
-    --radius-md: calc(var(--radius) - 2px);
-    --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) + 4px);
+    --mono: 'IBM Plex Mono', ui-monospace, monospace;
+    --sans: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif;
 
-    --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-    --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
-
-    --sans: "Inter", "Spoqa Han Sans Neo", -apple-system, BlinkMacSystemFont,
-            system-ui, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
-    --mono: "Fira Code", "SF Mono", "Roboto Mono", Menlo, Consolas, monospace;
-
-    /* ---- 분야별 카테고리 색상 ----
-       검증 완료: 6개 슬롯 전부 PASS (명도대역 / 채도 / 색각이상 분리 ΔE 9.1 /
-       일반시야 ΔE 19.6). '미분류'는 계열색이 아닌 회색 기타 버킷.
-       ⚠ 순서가 곧 색각 안전장치입니다. 임의로 섞지 마세요. */
-    --field-edu:      #2a78d6;  /* 1 blue    교육 */
-    --field-startup:  #eb6834;  /* 2 orange  스타트업 지원 */
-    --field-event:    #1baf7a;  /* 3 aqua    행사 기획·운영 */
-    --field-promo:    #eda100;  /* 4 yellow  홍보/마케팅 */
-    --field-it:       #e87ba4;  /* 5 magenta IT 플랫폼 운영 */
+    /* ---- 분야별 카테고리 색상 (다크 배경 기준) ----
+       검증 완료: 6색 전부 PASS — 명도대역 / 채도 / 색각이상 분리 ΔE 8.4 /
+       일반시야 ΔE 19.3 / 대비 전부 3:1 이상 (surface #12171F).
+       ⚠ 선언 순서가 곧 색각 안전장치입니다. 임의로 섞지 마세요.
+       ⚠ 배경을 밝게 바꾸면 이 값들은 무효입니다. 라이트용 값이 따로 있습니다. */
+    --field-edu:      #3987e5;  /* 1 blue    교육 */
+    --field-startup:  #d95926;  /* 2 orange  스타트업 지원 */
+    --field-event:    #199e70;  /* 3 aqua    행사 기획·운영 */
+    --field-promo:    #c98500;  /* 4 yellow  홍보/마케팅 */
+    --field-it:       #d55181;  /* 5 magenta IT 플랫폼 운영 */
     --field-region:   #008300;  /* 6 green   지역 브랜딩 */
-    --field-none:     #898781;  /* 기타(미분류) — 회색, 계열색 아님 */
+    --field-none:     #6B7480;  /* 기타(미분류) — 회색, 계열색 아님 */
 
-    /* ⚠ JavaScript.html 이 resolveColor('var(--accent)') 로 참조합니다.
-       shadcn 원본에서 --accent 는 hover 배경색이지만, 여기서는 기존 코드
-       호환을 위해 '브랜드 강조색'(= primary)으로 둡니다.
-       hover 배경이 필요하면 --muted 를 쓰세요. */
-    --accent: oklch(0.21 0.006 285.885);
-    --accent-soft: oklch(0.967 0.001 286.375);
+    /* ⚠ JavaScript.html 이 resolveColor('var(--accent)') 로 막대 차트 색을 참조합니다. */
+    --accent: #D9A354;
+    --accent-soft: rgba(217, 163, 84, 0.14);
   }
 
-  * { box-sizing: border-box; border-color: var(--border); }
+  * { box-sizing: border-box; }
 
   html, body {
     margin: 0;
     padding: 0;
-    background: var(--page);
-    color: var(--foreground);
+    background: var(--ink);
+    color: var(--text);
     font-family: var(--sans);
     font-size: 14px;
+    min-height: 100vh;
+    overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
   }
 
   a { color: inherit; text-decoration: none; }
 
-  #app { max-width: 1180px; margin: 0 auto; padding: 0 24px 96px; }
+  /* ---------- 배경 메시 (시그니처) ---------- */
+  .mesh {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    opacity: 0.55;
+    pointer-events: none;
+  }
+  .mesh line {
+    stroke: var(--gold);
+    stroke-width: 1;
+    opacity: 0.16;
+    stroke-dasharray: 6 520;
+    stroke-dashoffset: 526;
+    animation: draw 2.4s ease-out forwards;
+  }
+  .mesh circle {
+    fill: var(--gold);
+    opacity: 0;
+    animation: appear 1s ease-out forwards;
+  }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  @keyframes appear { to { opacity: 0.5; } }
+  @keyframes pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 0.75; } }
+  .mesh circle.pulse {
+    animation: appear 1s ease-out forwards, pulse 5s ease-in-out infinite;
+    animation-delay: 0s, 1s;
+  }
 
-  /* ---------- Header (원본 Header.tsx: h-16 / mono logo) ---------- */
-  .masthead {
-    height: 64px;
-    padding-top: 16px;
+  .vignette {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    background: radial-gradient(ellipse 70% 55% at 50% 30%, rgba(11, 14, 19, 0) 0%, var(--ink) 78%);
+    pointer-events: none;
+  }
+
+  #app { position: relative; z-index: 2; }
+
+  /* ============================================================
+     홈 — 포털
+     ============================================================ */
+
+  .stage {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 64px 24px 40px;
+  }
+
+  header.brand { text-align: center; margin-bottom: 40px; }
+
+  .logotype {
+    width: min(260px, 62vw);
+    height: auto;
+    display: block;
+    margin: 0 auto;
+    filter: drop-shadow(0 0 28px var(--gold-soft));
+  }
+
+  .brand-tagline {
+    margin-top: 10px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .brand-tagline .sep { color: var(--gold-line); margin: 0 8px; }
+
+  .search-wrap { width: 100%; max-width: 560px; margin-bottom: 52px; }
+
+  .search-box {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 12px;
-    flex-wrap: wrap;
-    margin-bottom: 8px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 18px;
+    transition: border-color .2s ease, box-shadow .2s ease;
   }
+  .search-box:focus-within {
+    border-color: var(--gold-line);
+    box-shadow: 0 0 0 3px var(--gold-soft);
+  }
+  .search-box svg { flex: none; opacity: .6; }
+  .search-box input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-size: 15px;
+    font-family: inherit;
+  }
+  .search-box input::placeholder { color: var(--muted-2); }
 
-  .masthead h1 {
+  .search-kbd {
     font-family: var(--mono);
-    font-size: 24px;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    line-height: 1.2;
-    margin: 0;
+    font-size: 11px;
+    color: var(--muted-2);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: 2px 6px;
+    flex: none;
   }
 
-  .masthead .subtitle {
-    font-size: 13px;
-    color: var(--muted-foreground);
-    margin-top: 4px;
+  .portal-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 14px;
+    width: 100%;
+    max-width: 1080px;
   }
 
-  .masthead .updated {
-    font-size: 12px;
-    color: var(--muted-foreground);
+  .portal-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 20px 18px;
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    transition: transform .18s ease, border-color .18s ease, background .18s ease, opacity .18s ease;
+    min-height: 150px;
+  }
+  .portal-card:hover,
+  .portal-card:focus-visible {
+    transform: translateY(-4px);
+    border-color: var(--gold-line);
+    background: var(--panel-2);
+  }
+  .portal-card:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .portal-card.disabled { opacity: .55; pointer-events: none; }
+
+  .card-icon { width: 26px; height: 26px; color: var(--gold); opacity: .9; }
+
+  .card-eyebrow {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    color: var(--muted-2);
+    text-transform: uppercase;
+  }
+
+  .card-title { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+
+  .card-desc {
+    font-size: 12.5px;
+    color: var(--muted);
+    line-height: 1.5;
+    margin-top: auto;
+  }
+
+  .badge {
+    position: absolute;
+    top: 16px; right: 16px;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    color: var(--gold);
+    border: 1px solid var(--gold-line);
+    background: var(--gold-soft);
+    border-radius: 20px;
+    padding: 3px 8px;
+  }
+
+  .portal-footer {
+    margin-top: 48px;
+    text-align: center;
+    font-size: 11.5px;
+    color: var(--muted-2);
+    line-height: 1.7;
+  }
+  .portal-footer strong { color: var(--muted); font-weight: 500; }
+
+  /* ============================================================
+     서브 페이지 (실적검색 / 인력현황)
+     ============================================================ */
+
+  .subhead {
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 24px;
+    background: rgba(11, 14, 19, 0.72);
+    backdrop-filter: blur(8px);
+    position: sticky;
+    top: 0;
+    z-index: 5;
+  }
+
+  .subhead-inner {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+
+  .home-link {
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    color: var(--gold);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .home-link:hover { opacity: .8; }
+
+  .subhead .updated {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--muted-2);
     text-align: right;
     line-height: 1.5;
-    font-variant-numeric: tabular-nums;
   }
 
-  /* ---------- Tabs (shadcn tabs: muted pill + white active) ---------- */
-  .tab-nav {
-    display: inline-flex;
-    align-items: center;
-    height: 36px;
-    padding: 3px;
-    gap: 0;
-    background: var(--muted);
-    border-radius: var(--radius-lg);
-    margin: 12px 0 24px;
+  .subhead .subtitle {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 24px 12px;
+    font-size: 12.5px;
+    color: var(--muted);
   }
+
+  .tab-nav { display: flex; gap: 6px; }
 
   .tab-btn {
     font-family: inherit;
     font-size: 13px;
     font-weight: 500;
-    color: var(--foreground);
+    color: var(--muted);
     background: transparent;
     border: 1px solid transparent;
-    border-radius: var(--radius-md);
-    height: calc(100% - 1px);
-    padding: 0 14px;
+    border-radius: 7px;
+    padding: 7px 14px;
     cursor: pointer;
     white-space: nowrap;
-    transition: color .15s ease, box-shadow .15s ease, background-color .15s ease;
+    transition: color .15s ease, background .15s ease, border-color .15s ease;
   }
-  .tab-btn:hover { color: var(--foreground); }
+  .tab-btn:hover { color: var(--text); background: var(--panel); }
   .tab-btn.active {
-    background: var(--background);
-    box-shadow: var(--shadow-sm);
-  }
-  .tab-btn:focus-visible {
-    outline: none;
-    border-color: var(--ring);
-    box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+    color: var(--gold);
+    background: var(--gold-soft);
+    border-color: var(--gold-line);
   }
 
-  /* ---------- Card (shadcn Card: rounded-xl border py-6 shadow-sm) ---------- */
+  .panel-body { max-width: 1180px; margin: 0 auto; padding: 0 24px 80px; }
+
+  /* ---------- 카드 ---------- */
   .card {
-    background: var(--card);
-    color: var(--card-foreground);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-sm);
-    padding: 20px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px 20px;
   }
 
-  /* ---------- Home ---------- */
-  .home-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    gap: 16px;
-  }
-
-  .home-card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-sm);
-    padding: 22px 24px;
-    cursor: pointer;
-    transition: border-color .15s ease, box-shadow .15s ease;
-  }
-  .home-card:hover {
-    border-color: var(--primary);
-    box-shadow: 0 4px 12px -2px rgb(0 0 0 / 0.08);
-  }
-
-  .home-card-top {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    margin-bottom: 10px;
-  }
-
-  .home-card-title { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
-
-  .home-card-desc {
-    font-size: 13px;
-    color: var(--muted-foreground);
-    line-height: 1.55;
-  }
-
-  /* ---------- Badge (shadcn: rounded-full px-2 py-0.5 text-xs) ---------- */
-  .status-badge {
-    display: inline-flex;
-    align-items: center;
-    border: 1px solid transparent;
-    border-radius: 9999px;
-    padding: 2px 9px;
-    font-size: 11.5px;
-    font-weight: 500;
-    white-space: nowrap;
-  }
-  .status-badge.live { background: var(--primary); color: var(--primary-foreground); }
-  .status-badge.planned { background: var(--secondary); color: var(--muted-foreground); }
-
-  .consortium-badge {
-    display: inline-flex;
-    align-items: center;
-    border: 1px solid var(--border);
-    border-radius: 9999px;
-    padding: 1px 8px;
-    margin-left: 8px;
-    font-size: 11px;
-    font-weight: 500;
-    color: var(--muted-foreground);
-    vertical-align: middle;
-  }
-
-  /* ---------- Composition bar ---------- */
+  /* ---------- 구성비 막대 ---------- */
   .composition { margin-bottom: 24px; }
 
   .composition-label {
     display: flex;
     justify-content: space-between;
-    font-size: 12px;
-    color: var(--muted-foreground);
+    font-size: 11.5px;
+    color: var(--muted-2);
     margin-bottom: 8px;
   }
 
@@ -237,9 +343,10 @@
     display: flex;
     width: 100%;
     height: 28px;
-    border-radius: var(--radius-md);
+    border-radius: 7px;
     overflow: hidden;
-    background: var(--muted);
+    background: var(--panel);
+    border: 1px solid var(--line);
   }
 
   /* 세그먼트 사이 2px 서피스 갭 — 폭을 바꾸지 않도록 inset shadow 사용 */
@@ -248,7 +355,7 @@
     min-width: 3px;
     cursor: pointer;
     transition: opacity .15s ease;
-    box-shadow: inset -2px 0 0 var(--card);
+    box-shadow: inset -2px 0 0 var(--panel);
   }
   .composition-seg:last-child { box-shadow: none; }
   .composition-seg:hover { opacity: .8; }
@@ -267,139 +374,124 @@
     align-items: center;
     gap: 7px;
     cursor: pointer;
-    color: var(--muted-foreground);
+    color: var(--muted);
     padding: 2px 0;
   }
-  .composition-legend .item:hover { color: var(--foreground); }
-  .composition-legend .item.active { color: var(--foreground); font-weight: 600; }
-  .composition-legend .swatch {
-    width: 10px; height: 10px; border-radius: 3px; flex: none;
-  }
+  .composition-legend .item:hover { color: var(--text); }
+  .composition-legend .item.active { color: var(--gold); font-weight: 600; }
+  .composition-legend .swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
 
-  /* ---------- Stat + chart ---------- */
+  /* ---------- 통계 + 차트 ---------- */
   .dashboard {
     display: grid;
     grid-template-columns: 220px 1fr 1fr;
-    gap: 16px;
+    gap: 14px;
     margin-bottom: 28px;
   }
 
-  .stat-stack { display: flex; flex-direction: column; gap: 16px; }
+  .stat-stack { display: flex; flex-direction: column; gap: 14px; }
 
   .stat-card .stat-label {
-    font-size: 12.5px;
-    color: var(--muted-foreground);
+    font-size: 11.5px;
+    color: var(--muted-2);
     margin-bottom: 8px;
   }
 
   .stat-card .stat-value {
-    font-size: 30px;
-    font-weight: 600;
-    letter-spacing: -0.025em;
+    font-family: var(--mono);
+    font-size: 28px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
     line-height: 1.1;
+    color: var(--text);
     font-variant-numeric: tabular-nums;
   }
 
   .stat-card .stat-value .unit {
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 400;
-    color: var(--muted-foreground);
+    color: var(--muted-2);
     margin-left: 4px;
   }
 
   .chart-card { display: flex; flex-direction: column; }
-
-  .chart-card .chart-title {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--foreground);
-    margin-bottom: 4px;
-  }
-
+  .chart-card .chart-title { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
   .chart-card .chart-body { flex: 1; position: relative; min-height: 190px; }
 
   .hr-stats {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 16px;
+    gap: 14px;
     margin-bottom: 24px;
   }
 
-  /* ---------- Filters (shadcn input/select/button) ---------- */
+  /* ---------- 필터 ---------- */
   .filters {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
     align-items: center;
-    margin-bottom: 20px;
+    margin-bottom: 18px;
   }
 
   .filters input[type="text"],
   .filters select {
     font-family: inherit;
     font-size: 13px;
-    height: 36px;
-    color: var(--foreground);
-    background: var(--background);
-    border: 1px solid var(--input);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-xs);
-    padding: 0 10px;
+    height: 38px;
+    color: var(--text);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 0 12px;
     outline: none;
-    transition: box-shadow .15s ease, border-color .15s ease;
+    transition: border-color .2s ease, box-shadow .2s ease;
   }
 
   .filters input[type="text"] { flex: 1 1 220px; min-width: 160px; }
-  .filters input[type="text"]::placeholder { color: var(--muted-foreground); }
+  .filters input[type="text"]::placeholder { color: var(--muted-2); }
 
   .filters input[type="text"]:focus,
   .filters select:focus {
-    border-color: var(--ring);
-    box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+    border-color: var(--gold-line);
+    box-shadow: 0 0 0 3px var(--gold-soft);
   }
 
-  /* shadcn Button — outline variant, size default (h-9 px-4) */
   .filters .reset-btn {
     font-family: inherit;
-    font-size: 13px;
+    font-size: 12.5px;
     font-weight: 500;
-    height: 36px;
+    height: 38px;
     padding: 0 16px;
-    color: var(--foreground);
-    background: var(--background);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-xs);
+    color: var(--gold);
+    background: transparent;
+    border: 1px solid var(--gold-line);
+    border-radius: 8px;
     cursor: pointer;
     white-space: nowrap;
-    transition: background-color .15s ease;
+    transition: background .15s ease;
   }
-  .filters .reset-btn:hover { background: var(--muted); }
+  .filters .reset-btn:hover { background: var(--gold-soft); }
 
-  .result-count {
-    font-size: 13px;
-    color: var(--muted-foreground);
-    margin-bottom: 10px;
-  }
-  .result-count b { color: var(--foreground); font-variant-numeric: tabular-nums; }
+  .result-count { font-size: 12.5px; color: var(--muted); margin-bottom: 10px; }
+  .result-count b { color: var(--text); font-family: var(--mono); font-weight: 500; }
 
-  /* ---------- Ledger (shadcn Table 어법: 행 border-b, hover muted) ---------- */
+  /* ---------- 목록 ---------- */
   .ledger {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-sm);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
     overflow: hidden;
   }
 
   .ledger-row {
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--line-soft);
     padding: 12px 16px;
     cursor: pointer;
-    transition: background-color .12s ease;
+    transition: background .12s ease;
   }
   .ledger-row:last-child { border-bottom: none; }
-  .ledger-row:hover { background: color-mix(in oklab, var(--muted) 60%, transparent); }
+  .ledger-row:hover { background: var(--panel-2); }
 
   .ledger-row-main {
     display: grid;
@@ -407,16 +499,14 @@
     gap: 14px;
     align-items: center;
   }
-
-  .ledger-row-main.hr-cols {
-    grid-template-columns: 4px 1fr 110px 110px 130px 24px;
-  }
+  .ledger-row-main.hr-cols { grid-template-columns: 4px 1fr 110px 110px 130px 24px; }
 
   .field-tag-bar { width: 4px; height: 32px; border-radius: 9999px; }
 
   .ledger-year {
-    font-size: 13px;
-    color: var(--muted-foreground);
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--muted-2);
     font-variant-numeric: tabular-nums;
   }
 
@@ -426,24 +516,35 @@
     line-height: 1.4;
     margin-bottom: 2px;
   }
+  .ledger-main-text .org-name { font-size: 12.5px; color: var(--muted); }
 
-  .ledger-main-text .org-name {
-    font-size: 12.5px;
-    color: var(--muted-foreground);
+  .consortium-badge {
+    display: inline-flex;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--gold);
+    border: 1px solid var(--gold-line);
+    background: var(--gold-soft);
+    border-radius: 20px;
+    padding: 1px 8px;
+    margin-left: 8px;
+    vertical-align: middle;
   }
 
   .field-tag {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    font-size: 12.5px;
-    color: var(--muted-foreground);
+    font-size: 12px;
+    color: var(--muted);
     white-space: nowrap;
   }
   .field-tag .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 
   .ledger-amount {
-    font-size: 13px;
+    font-family: var(--mono);
+    font-size: 12.5px;
     text-align: right;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
@@ -451,7 +552,7 @@
 
   .expand-caret {
     font-size: 10px;
-    color: var(--muted-foreground);
+    color: var(--muted-2);
     text-align: center;
     transition: transform .15s ease;
   }
@@ -461,7 +562,7 @@
     display: none;
     padding: 12px 0 4px 18px;
     font-size: 13px;
-    color: var(--muted-foreground);
+    color: var(--muted);
     line-height: 1.6;
   }
   .ledger-row.open .ledger-detail { display: block; }
@@ -469,20 +570,21 @@
   .ledger-detail .detail-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 8px 24px;
+    gap: 8px 20px;
     margin-top: 10px;
     font-size: 12.5px;
   }
   .ledger-detail .detail-grid > div {
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
+    border: 1px solid var(--line-soft);
+    border-radius: 8px;
     padding: 8px 10px;
-    background: var(--background);
+    background: var(--ink);
+    color: var(--text);
   }
   .ledger-detail .detail-grid div b {
     display: block;
-    color: var(--muted-foreground);
-    font-size: 11.5px;
+    color: var(--muted-2);
+    font-size: 11px;
     font-weight: 400;
     margin-bottom: 3px;
   }
@@ -490,29 +592,29 @@
   .empty-state {
     text-align: center;
     padding: 64px 20px;
-    color: var(--muted-foreground);
+    color: var(--muted-2);
     font-size: 13.5px;
   }
 
   .privacy-note {
-    font-size: 12px;
-    color: var(--muted-foreground);
+    font-size: 11.5px;
+    color: var(--muted-2);
     margin-top: 16px;
     text-align: center;
   }
 
-  /* ---------- Responsive ---------- */
-  @media (max-width: 900px) {
+  /* ---------- 반응형 ---------- */
+  @media (max-width: 920px) {
+    .portal-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .dashboard { grid-template-columns: 1fr; }
     .stat-stack { flex-direction: row; flex-wrap: wrap; }
     .stat-stack .card { flex: 1 1 150px; }
   }
 
   @media (max-width: 720px) {
-    #app { padding: 0 16px 72px; }
     .hr-stats { grid-template-columns: repeat(2, 1fr); }
-    .tab-nav { display: flex; width: 100%; }
-    .tab-btn { flex: 1; padding: 0 8px; }
+    .subhead-inner, .subhead .subtitle, .panel-body { padding-left: 16px; padding-right: 16px; }
+    .subhead .updated { display: none; }
     .ledger-row-main,
     .ledger-row-main.hr-cols {
       display: flex;
@@ -526,5 +628,15 @@
     .field-tag { order: 2; }
     .ledger-amount { order: 3; margin-left: auto; }
     .expand-caret { order: 4; }
+  }
+
+  @media (max-width: 520px) {
+    .portal-grid { grid-template-columns: 1fr; }
+    .stage { padding: 48px 18px 32px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .mesh line, .mesh circle { animation: none !important; opacity: .3; }
+    .portal-card { transition: none; }
   }
 </style>

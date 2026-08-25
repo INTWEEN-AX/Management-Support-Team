@@ -10,11 +10,11 @@
   };
   const FIELD_ORDER = Object.keys(FIELD_COLORS);
 
-  // 차트 크롬 — Stylesheet.html 의 shadcn zinc 토큰과 같은 값
-  const CHART_FONT = 'Inter';
-  const CHART_GRID = '#e4e4e7';    // --border
-  const CHART_TICK = '#71717b';    // --muted-foreground
-  const CHART_SURFACE = '#ffffff'; // --card (조각 사이 간격용)
+  // 차트 크롬 — Stylesheet.html 의 다크 토큰과 같은 값
+  const CHART_FONT = 'Pretendard';
+  const CHART_GRID = '#232B36';    // --line
+  const CHART_TICK = '#8A96A5';    // --muted
+  const CHART_SURFACE = '#12171F'; // --panel (조각 사이 간격용)
 
   let ALL_RECORDS = [];
   let activeFieldFilter = null; // clicking legend/composition toggles this
@@ -57,21 +57,67 @@
   });
 
   function initTabs() {
-    document.querySelectorAll('.tab-btn').forEach(function (btn) {
-      btn.addEventListener('click', function () { switchTab(btn.dataset.tab); });
+    // 탭 버튼, 홈으로 돌아가는 로고, 포털 카드 — data-tab 이 있으면 모두 이동 트리거
+    document.querySelectorAll('[data-tab]').forEach(function (el) {
+      el.addEventListener('click', function () { switchTab(el.dataset.tab); });
     });
-    document.querySelectorAll('.home-card').forEach(function (card) {
-      card.addEventListener('click', function () { switchTab(card.dataset.tab); });
-    });
+    initPortalSearch();
   }
 
   function switchTab(tab) {
+    if (!tab) return;
+    var panel = document.getElementById('panel-' + tab);
+    if (!panel) return;
+
     document.querySelectorAll('.tab-btn').forEach(function (b) {
       b.classList.toggle('active', b.dataset.tab === tab);
     });
     document.querySelectorAll('.panel').forEach(function (p) { p.style.display = 'none'; });
-    document.getElementById('panel-' + tab).style.display = '';
-    document.getElementById('page-subtitle').textContent = TAB_SUBTITLES[tab] || '';
+    panel.style.display = '';
+
+    // 홈은 전체화면 포털이라 서브 헤더를 숨긴다
+    var isHome = (tab === 'home');
+    document.getElementById('subhead').style.display = isHome ? 'none' : '';
+    document.getElementById('page-subtitle').textContent = isHome ? '' : (TAB_SUBTITLES[tab] || '');
+    window.scrollTo(0, 0);
+
+    // 차트는 패널이 display:none 인 동안 0×0 으로 그려진다.
+    // 탭이 보이는 시점에 다시 크기를 잡아줘야 정상 표시된다.
+    if (tab === 'performance') {
+      if (fieldChart) fieldChart.resize();
+      if (yearChart) yearChart.resize();
+    }
+  }
+
+  /** 포털 검색: 카드 흐리게 필터링 + Enter 로 첫 결과 이동 */
+  function initPortalSearch() {
+    var input = document.getElementById('portalSearch');
+    if (!input) return;
+    var cards = Array.prototype.slice.call(document.querySelectorAll('.portal-card'));
+
+    function matches(card, q) {
+      if (!q) return true;
+      var hay = ((card.dataset.keywords || '') + ' ' +
+                 (card.querySelector('.card-title') || {}).textContent).toLowerCase();
+      return hay.indexOf(q) > -1;
+    }
+
+    input.addEventListener('input', function () {
+      var q = input.value.trim().toLowerCase();
+      cards.forEach(function (card) {
+        card.style.opacity = matches(card, q) ? '' : '0.28';
+      });
+    });
+
+    input.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter') return;
+      var q = input.value.trim().toLowerCase();
+      // 준비중 카드는 이동 대상에서 제외
+      var hit = cards.filter(function (c) {
+        return c.dataset.tab && !c.classList.contains('disabled') && matches(c, q);
+      })[0];
+      if (hit) switchTab(hit.dataset.tab);
+    });
   }
 
   function onLoadError(err) {
