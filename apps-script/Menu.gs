@@ -19,9 +19,12 @@ function onOpen() {
     .addItem('컬럼 인식 진단', 'diagnoseColumns')
     .addToUi();
 
+  // 아래 두 항목은 '새로고침'이 아니라 파싱 점검용입니다.
+  // 웹앱은 캐시 없이 매번 시트를 새로 읽으므로, 시트를 고치면
+  // 웹 페이지를 새로고침(F5)하는 것만으로 반영됩니다.
   ui.createMenu('대시보드')
-    .addItem('실적 데이터 새로고침 확인', 'debugPerformanceData')
-    .addItem('인력현황 데이터 새로고침 확인', 'debugHRData')
+    .addItem('실적 데이터 파싱 점검', 'debugPerformanceData')
+    .addItem('인력현황 데이터 파싱 점검', 'debugHRData')
     .addToUi();
 }
 

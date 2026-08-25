@@ -71,6 +71,14 @@ var HR_STATUS_TABS = ['재직(상근)', '재직(비상근)', '휴직'];
 재직증명서 쪽은 코드가 아니라 **메뉴 → [재직증명서] → [설정]** 에서
 양식 파일 링크와 저장 폴더 링크를 넣습니다. (스크립트 속성에 저장됨)
 
+**데이터는 캐시되지 않습니다.** `getPerformanceData()` / `getHRData()` 는 호출될
+때마다 시트를 새로 읽으므로, 시트를 고치면 **웹 페이지를 새로고침(F5)** 하는 것만으로
+반영됩니다. 재배포도 필요 없습니다. 단, 프론트엔드는 페이지를 열 때 한 번만
+데이터를 가져오므로 열어둔 화면이 저절로 갱신되지는 않습니다.
+
+메뉴의 **[대시보드] → [… 파싱 점검]** 은 새로고침 기능이 아니라, 컬럼이 제대로
+매칭됐는지 첫 행의 JSON을 눈으로 확인하는 진단 도구입니다.
+
 ### 4. 웹앱 배포
 
 **배포 → 새 배포 → 유형: 웹 앱**
@@ -100,7 +108,7 @@ var HR_STATUS_TABS = ['재직(상근)', '재직(비상근)', '휴직'];
 | `onOpen` | 시트 열 때 자동 (최초 1회만 수동 실행) |
 | `issueSelected` | 메뉴 [재직증명서] → [선택한 행 발급] |
 | `showSettings` / `checkSettings` / `diagnoseColumns` | 메뉴 [재직증명서] |
-| `debugPerformanceData` / `debugHRData` | 메뉴 [대시보드] |
+| `debugPerformanceData` / `debugHRData` | 메뉴 [대시보드] — 파싱 점검용 |
 | `doGet` | 웹앱 접속 시 자동 — **직접 실행하면 오류** |
 | `getPerformanceData` / `getHRData` | 브라우저에서 `google.script.run` |
 | `include` | `Index.html` 이 자동 호출 |
