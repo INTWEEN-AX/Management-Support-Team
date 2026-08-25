@@ -26,6 +26,13 @@ function onOpen() {
     .addItem('실적 데이터 파싱 점검', 'debugPerformanceData')
     .addItem('인력현황 데이터 파싱 점검', 'debugHRData')
     .addToUi();
+
+  ui.createMenu('생일메일')
+    .addItem('오늘 발송 대상 미리보기 (실제 발송 안 함)', 'showBirthdayPreview')
+    .addSeparator()
+    .addItem('트리거 확인', 'showBirthdayTriggers')
+    .addItem('트리거 등록/재등록', 'setupBirthdayTrigger')
+    .addToUi();
 }
 
 /** HTML 템플릿에서 다른 파일을 끼워 넣을 때 사용 (Index.html 등) */
