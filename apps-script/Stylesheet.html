@@ -1066,6 +1066,268 @@
   .doc-download:hover { background: var(--grey-4); border-color: var(--border-active); }
 
   /* ============================================================
+     버튼 (comp_lib Button)
+     ============================================================ */
+  .btn-primary, .btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 36px;
+    padding: 0 18px;
+    font-family: inherit;
+    font-size: var(--fs-button);
+    border-radius: var(--br-pill);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background .15s ease, border-color .15s ease;
+  }
+  .btn-primary {
+    background: var(--primary-1);
+    color: var(--primary-white);
+    border: none;
+    font-weight: var(--fw-bold);
+  }
+  .btn-primary:hover { background: #35604F; }
+  .btn-ghost {
+    background: var(--background);
+    color: var(--primary-black);
+    border: 1.2px solid var(--border);
+    font-weight: var(--fw-regular);
+  }
+  .btn-ghost:hover { background: var(--grey-4); border-color: var(--border-active); }
+
+  .bid-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 14px;
+  }
+  .bid-actions .bid-link { margin-top: 0; }
+
+  /* ============================================================
+     제안자료 모달
+     ============================================================ */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: rgba(31, 36, 34, .45);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 20px;
+  }
+
+  .modal {
+    width: 100%;
+    max-width: 880px;
+    max-height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: var(--background);
+    border-radius: var(--br-card-large);
+    box-shadow: 0 24px 64px -20px rgba(31, 36, 34, .45);
+    overflow: hidden;
+  }
+
+  .modal-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 22px 24px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .modal-eyebrow {
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--grey-3);
+    margin-bottom: 6px;
+  }
+  .modal-title {
+    font-size: var(--fs-h3);
+    line-height: 1.4;
+    font-weight: var(--fw-bold);
+    color: var(--primary-black);
+  }
+  .modal-sub {
+    margin-top: 6px;
+    font-size: var(--fs-p);
+    color: var(--grey-2);
+  }
+  .modal-close {
+    flex: none;
+    margin-left: auto;
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: var(--grey-5);
+    border-radius: 50%;
+    color: var(--grey-2);
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .modal-close:hover { background: var(--grey-4); color: var(--primary-black); }
+
+  .modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+  }
+
+  .modal-foot {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 24px;
+    border-top: 1px solid var(--border);
+    background: var(--grey-5);
+    flex-wrap: wrap;
+  }
+  .propose-selected {
+    font-size: var(--fs-p);
+    color: var(--grey-2);
+  }
+  .propose-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+    flex-wrap: wrap;
+  }
+
+  .propose-section + .propose-section { margin-top: var(--sp-element); }
+
+  .propose-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .propose-head h3 {
+    margin: 0;
+    font-size: var(--fs-h4);
+    font-weight: var(--fw-bold);
+    color: var(--primary-black);
+  }
+  .propose-hint {
+    font-size: var(--fs-p);
+    color: var(--grey-3);
+  }
+  .propose-head input {
+    margin-left: auto;
+    height: 34px;
+    width: 200px;
+    padding: 0 12px;
+    font-family: inherit;
+    font-size: var(--fs-p);
+    background: var(--grey-5);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    outline: none;
+  }
+  .propose-head input:focus {
+    background: var(--background);
+    border-color: var(--primary-2);
+  }
+
+  .propose-list {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+
+  .pick-row {
+    display: grid;
+    grid-template-columns: 20px 34px 1fr;
+    gap: 12px;
+    align-items: start;
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+  }
+  .propose-list .pick-row:last-child { border-bottom: none; }
+  .pick-row:hover { background: var(--grey-5); }
+  /* 인력 목록은 점수 칸이 없다 */
+  #propose-hr-list .pick-row { grid-template-columns: 20px 1fr; }
+
+  .pick-row input { margin: 2px 0 0; width: 16px; height: 16px; accent-color: var(--primary-1); }
+
+  .pick-score {
+    font-family: var(--mono);
+    font-size: var(--fs-p);
+    font-weight: var(--fw-bold);
+    color: var(--primary-1);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .pick-main { display: block; min-width: 0; }
+  .pick-title {
+    display: block;
+    font-size: var(--fs-h4);
+    font-weight: var(--fw-medium);
+    color: var(--primary-black);
+    line-height: 1.4;
+  }
+  .pick-sub {
+    display: block;
+    margin-top: 3px;
+    font-size: var(--fs-p);
+    color: var(--grey-2);
+  }
+  .pick-pos {
+    margin-left: 8px;
+    font-size: var(--fs-p);
+    font-weight: var(--fw-regular);
+    color: var(--grey-2);
+  }
+  .pick-hits { display: block; margin-top: 6px; }
+  .pick-hits .hit {
+    display: inline-block;
+    font-size: var(--fs-caption);
+    line-height: 18px;
+    color: var(--primary-1);
+    background: var(--primary-5);
+    border-radius: 2px;
+    padding: 0 6px;
+    margin: 0 4px 4px 0;
+  }
+  .same-org {
+    display: inline-block;
+    margin-left: 8px;
+    font-size: var(--fs-caption);
+    line-height: 18px;
+    color: var(--amber-1);
+    background: var(--amber-5);
+    border: 1px solid var(--amber-2);
+    border-radius: 2px;
+    padding: 0 6px;
+    vertical-align: middle;
+  }
+
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 32px;
+    transform: translateX(-50%) translateY(12px);
+    z-index: 200;
+    padding: 12px 20px;
+    background: var(--primary-black);
+    color: var(--primary-white);
+    font-size: var(--fs-p);
+    border-radius: var(--br-pill);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s ease, transform .2s ease;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ============================================================
      반응형
      ============================================================ */
   @media (max-width: 1100px) {
@@ -1110,6 +1372,15 @@
     .expand-caret { order: 4; }
     .dday { order: 0; flex: 0 0 62px; }
     .bid-kw-wrap { order: 2; justify-content: flex-start; flex: 1 1 auto; }
+  }
+
+  @media (max-width: 720px) {
+    .modal-backdrop { padding: 0; }
+    .modal { max-width: none; height: 100%; border-radius: 0; }
+    .propose-head { flex-wrap: wrap; }
+    .propose-head input { margin-left: 0; width: 100%; }
+    .propose-actions { width: 100%; margin-left: 0; }
+    .propose-actions button { flex: 1; }
   }
 
   @media (max-width: 520px) {
