@@ -34,6 +34,7 @@ function onOpen() {
     .addItem('현재 설정 확인', 'checkBidSettings')
     .addItem('API 연결 테스트', 'testBidApi')
     .addItem('수집 데이터 파싱 점검', 'debugBidData')
+    .addItem('마감일시 필드 진단', 'debugBidRaw')
     .addSeparator()
     .addItem('트리거 확인', 'showBidTriggers')
     .addItem('트리거 등록/재등록', 'setupBidTrigger')

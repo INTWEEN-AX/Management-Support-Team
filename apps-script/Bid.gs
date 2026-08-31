@@ -625,6 +625,51 @@ function testBidApi() {
   }
 }
 
+/**
+ * 메뉴: 마감일시 필드 진단
+ *
+ * 협상에 의한 계약·제안서 제출 공고는 bidClseDt 가 비어 있는 경우가 있다.
+ * 어느 필드에 실제 마감이 들어가는지 응답 원문에서 직접 확인하기 위한 도구.
+ */
+function debugBidRaw() {
+  var ui = SpreadsheetApp.getUi();
+  var end = new Date();
+  var bgn = new Date(end.getTime() - 3 * 24 * 60 * 60 * 1000);
+
+  try {
+    var items = fetchAllBidPages_('getBidPblancListInfoServc', bgn, end);
+    if (!items.length) {
+      ui.alert('최근 3일간 용역공고가 없어 확인할 표본이 없습니다.');
+      return;
+    }
+
+    var noClose = items.filter(function (it) { return !pick_(it, ['bidClseDt']); });
+    var target = noClose.length ? noClose[0] : items[0];
+
+    // 날짜로 보이는 필드만 추려서 보여준다
+    var dateKeys = Object.keys(target).filter(function (k) {
+      return /dt$|dttm$|date|ymd|일시/i.test(k);
+    });
+    var lines = dateKeys.map(function (k) {
+      return '  ' + k + ' = ' + (target[k] === '' ? '(빈값)' : target[k]);
+    });
+
+    Logger.log('마감일시 진단 대상 원문:\n' + JSON.stringify(target, null, 2));
+
+    ui.alert(
+      '마감일시 없는 공고: ' + noClose.length + ' / ' + items.length + '건\n\n' +
+      '─ 표본 ─\n' +
+      '공고명: ' + pick_(target, ['bidNtceNm']).slice(0, 70) + '\n' +
+      '계약방법: ' + (pick_(target, ['cntrctCnclsMthdNm']) || '(없음)') + '\n' +
+      '공고종류: ' + (pick_(target, ['ntceKindNm']) || '(없음)') + '\n\n' +
+      '─ 날짜 관련 필드 ' + dateKeys.length + '개 ─\n' + lines.join('\n') + '\n\n' +
+      '전체 필드는 실행 기록에 남겼습니다.\n' +
+      '(편집기 → 왼쪽 [실행] 메뉴 → 최근 실행 클릭)');
+  } catch (e) {
+    ui.alert('진단 실패\n\n' + (e.message || e));
+  }
+}
+
 /** 메뉴: 파싱 점검 */
 function debugBidData() {
   var rows = getBidData();
