@@ -1137,8 +1137,113 @@
       .withFailureHandler(onMatchFail)
       .getBidMatches(bid.no, bid.ord);
 
-    // 공고문 본문은 뒤에서 읽어 들어온다 (첫 실행은 수십 초 걸린다)
-    loadBriefInBackground();
+    // 어떤 첨부가 붙어 있는지 먼저 확인한다.
+    // 읽을 수 있는 파일이 있을 때만 본문 추출을 돌린다 (hwp 뿐이면 헛수고다)
+    document.getElementById('attach-section').style.display = 'none';
+    loadAttachmentInfo();
+  }
+
+  /** 공고 첨부 목록을 받아 화면에 뿌리고, 읽을 수 있으면 본문 추출로 넘어간다 */
+  function loadAttachmentInfo() {
+    const gen = proposeGen;
+    const bid = proposeBid;
+
+    google.script.run
+      .withSuccessHandler(function (info) {
+        if (gen !== proposeGen) return;
+        renderAttachments(info);
+
+        if (info.hasReadable) {
+          setBriefStatus('공고문을 읽는 중… (처음 한 번은 시간이 걸립니다)', 'loading');
+          loadBriefInBackground();
+          return;
+        }
+
+        const hasHwp = info.files.some(function (f) { return f.ext === 'hwp'; });
+        setBriefStatus(
+          info.files.length
+            ? (hasHwp
+                ? '공고명 기준 — 읽을 수 있는 첨부가 없습니다. hwp를 hwpx로 저장해 폴더에 올리면 본문까지 반영됩니다.'
+                : '공고명 기준 — 읽을 수 있는 첨부가 없습니다.')
+            : '공고명 기준 — 이 공고에는 첨부파일이 없습니다.',
+          'failed',
+          info.files.length && !info.downloaded
+            ? { label: '첨부 내려받기', onClick: downloadAttachments }
+            : null);
+      })
+      .withFailureHandler(function (err) {
+        if (gen !== proposeGen) return;
+        renderAttachments({ files: [], error: String(err.message || err) });
+        setBriefStatus('공고명 기준 — 첨부를 확인하지 못했습니다.', 'failed',
+          { label: '다시 시도', onClick: loadAttachmentInfo });
+      })
+      .getBidAttachmentInfo(bid.no, bid.ord);
+  }
+
+  function downloadAttachments() {
+    const gen = proposeGen;
+    const bid = proposeBid;
+    setBriefStatus('첨부를 드라이브로 내려받는 중…', 'loading');
+
+    google.script.run
+      .withSuccessHandler(function (info) {
+        if (gen !== proposeGen) return;
+        renderAttachments(info);
+        if (info.hasReadable) {
+          setBriefStatus('공고문을 읽는 중…', 'loading');
+          loadBriefInBackground();
+        } else {
+          setBriefStatus(
+            '공고명 기준 — 내려받았지만 읽을 수 있는 파일이 없습니다. ' +
+            'hwp를 한컴에서 hwpx로 저장해 같은 폴더에 올려주세요.', 'failed',
+            { label: '다시 확인', onClick: loadAttachmentInfo });
+        }
+      })
+      .withFailureHandler(function (err) {
+        if (gen !== proposeGen) return;
+        setBriefStatus('첨부 내려받기 실패 — ' + String(err.message || err).split('\n')[0],
+          'failed', { label: '다시 시도', onClick: downloadAttachments });
+      })
+      .downloadBidAttachments(bid.no, bid.ord);
+  }
+
+  const ATTACH_ICON = { hwpx: '◆', pdf: '▣', hwp: '◇', zip: '▤' };
+
+  function renderAttachments(info) {
+    const section = document.getElementById('attach-section');
+    const list = document.getElementById('attach-list');
+    const folder = document.getElementById('attach-folder');
+    const files = (info && info.files) || [];
+
+    section.style.display = '';
+    document.getElementById('attach-count').textContent =
+      files.length ? files.length + '건' + (info.downloaded ? ' · 드라이브에 저장됨' : '') : '';
+
+    if (info && info.folderUrl) {
+      folder.href = info.folderUrl;
+      folder.style.display = '';
+    } else {
+      folder.style.display = 'none';
+    }
+
+    if (!files.length) {
+      list.innerHTML = '<div class="attach-empty">' +
+        escapeHtml(info && info.error ? info.error : '첨부파일이 없습니다.') + '</div>';
+      return;
+    }
+
+    list.innerHTML = files.map(function (f) {
+      const cls = f.excluded ? 'excluded' : (f.readable ? 'readable' : 'unreadable');
+      const icon = ATTACH_ICON[f.ext] || '▪';
+      const name = f.url
+        ? '<a href="' + escapeHtml(f.url) + '" target="_blank" rel="noopener">' + escapeHtml(f.name) + '</a>'
+        : escapeHtml(f.name);
+      return '<div class="attach-row ' + cls + '">' +
+        '<span class="attach-icon">' + icon + '</span>' +
+        '<span class="attach-name">' + name + '</span>' +
+        '<span class="attach-note">' + escapeHtml(f.note) + '</span>' +
+      '</div>';
+    }).join('');
   }
 
   function closeProposeModal() {

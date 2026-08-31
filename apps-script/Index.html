@@ -320,7 +320,16 @@
 
           <!-- 상태 문구와 버튼은 JavaScript.html 의 setBriefStatus() 가 채운다 -->
           <section class="brief-bar loading" id="brief-bar">
-            <div class="brief-status" id="brief-status">공고문을 읽는 중…</div>
+            <div class="brief-status" id="brief-status">공고 첨부를 확인하는 중…</div>
+          </section>
+
+          <section class="propose-section" id="attach-section" style="display:none">
+            <div class="propose-head">
+              <h3>공고 첨부</h3>
+              <span class="propose-hint" id="attach-count"></span>
+              <a class="attach-folder" id="attach-folder" href="#" target="_blank" rel="noopener" style="display:none">드라이브 폴더 열기 →</a>
+            </div>
+            <div class="attach-list" id="attach-list"></div>
           </section>
 
           <section class="propose-section">

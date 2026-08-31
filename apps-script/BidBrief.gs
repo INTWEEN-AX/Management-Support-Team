@@ -70,6 +70,126 @@ function getBidBriefMatches(bidNo, bidOrd) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// 첨부 목록 (화면에 뭐가 붙어 있는지 보여주기 위한 것)
+// ─────────────────────────────────────────────────────────────
+
+function isReadableExt_(ext) {
+  return ext === 'pdf' || ext === 'hwpx';
+}
+
+function attachmentNote_(ext, excluded) {
+  if (excluded) return '참고문서 (본문 대상 아님)';
+  if (ext === 'hwpx') return '읽을 수 있음';
+  if (ext === 'pdf') return '읽을 수 있음 (변환 필요)';
+  if (ext === 'hwp') return 'hwpx 로 변환하면 읽을 수 있음';
+  if (ext === 'zip') return '내려받아야 내용 확인';
+  return ext ? ext + ' 파일' : '알 수 없음';
+}
+
+function isExcludedBriefName_(lowerName) {
+  return BRIEF_EXCLUDED.some(function (w) { return lowerName.indexOf(w) > -1; });
+}
+
+/**
+ * 공고에 어떤 첨부가 붙어 있는지 돌려준다. (내려받지 않고 목록만)
+ * 이미 내려받아 둔 폴더가 있으면 그 안의 파일까지 합쳐서 보여준다 —
+ * 사용자가 hwp 를 hwpx 로 변환해 넣어둔 경우를 알아보기 위해서다.
+ */
+function getBidAttachmentInfo(bidNo, bidOrd) {
+  var no = String(bidNo || '').trim();
+  var out = { files: [], folderUrl: '', downloaded: false, hasReadable: false, error: '' };
+
+  try {
+    var items = fetchBidByNo_(no);
+    if (items.length) {
+      extractSpecDocs_(items[0]).forEach(function (d) {
+        var lower = String(d.name).toLowerCase();
+        var ext = lower.replace(/^.*\./, '');
+        out.files.push({
+          name: d.name,
+          ext: ext,
+          where: 'remote',
+          readable: isReadableExt_(ext),
+          excluded: isExcludedBriefName_(lower),
+          note: attachmentNote_(ext, isExcludedBriefName_(lower)),
+          url: d.url
+        });
+      });
+    }
+  } catch (e) {
+    out.error = String(e.message || e);
+  }
+
+  // 이미 받아둔 폴더가 있으면 그 안을 보여준다 (압축 해제분·사용자가 넣은 변환본 포함)
+  try {
+    var bids = getBidData();
+    var bid = null;
+    for (var i = 0; i < bids.length; i++) {
+      if (String(bids[i].no).trim() === no) { bid = bids[i]; break; }
+    }
+    if (bid) {
+      var parent = getBidAttachFolder_();
+      var it = parent.getFoldersByName(bidFolderName_(bid));
+      if (it.hasNext()) {
+        var folder = it.next();
+        out.downloaded = true;
+        out.folderUrl = folder.getUrl();
+        out.files = [];   // 로컬이 더 정확하므로 원격 목록을 대체한다
+
+        rankAllFiles_(folder).forEach(function (f) {
+          if (f.name === BRIEF_CACHE_NAME) return;
+          var lower = f.name.toLowerCase();
+          out.files.push({
+            name: f.name,
+            ext: f.ext,
+            where: 'drive',
+            readable: isReadableExt_(f.ext),
+            excluded: isExcludedBriefName_(lower),
+            note: attachmentNote_(f.ext, isExcludedBriefName_(lower)),
+            url: f.file.getUrl()
+          });
+        });
+      }
+    }
+  } catch (e) {
+    if (!out.error) out.error = String(e.message || e);
+  }
+
+  out.hasReadable = out.files.some(function (f) { return f.readable && !f.excluded; });
+  return JSON.parse(JSON.stringify(out));
+}
+
+/** 폴더(하위 포함)의 모든 파일을 {file, name, ext} 로 */
+function rankAllFiles_(folder) {
+  var files = [];
+  (function collect(f) {
+    var it = f.getFiles();
+    while (it.hasNext()) files.push(it.next());
+    var subs = f.getFolders();
+    while (subs.hasNext()) collect(subs.next());
+  })(folder);
+
+  return files.map(function (file) {
+    var name = file.getName();
+    return { file: file, name: name, ext: name.toLowerCase().replace(/^.*\./, '') };
+  }).sort(function (a, b) { return a.name.localeCompare(b.name, 'ko'); });
+}
+
+/** 화면에서 [첨부 내려받기] 를 눌렀을 때 */
+function downloadBidAttachments(bidNo, bidOrd) {
+  var bids = getBidData();
+  var no = String(bidNo || '').trim();
+  var bid = null;
+  for (var i = 0; i < bids.length; i++) {
+    if (String(bids[i].no).trim() === no) { bid = bids[i]; break; }
+  }
+  if (!bid) throw new Error('공고를 찾지 못했습니다: ' + no);
+
+  getOrFetchBidFolder_(bid);
+  return getBidAttachmentInfo(bidNo, bidOrd);
+}
+
+// ─────────────────────────────────────────────────────────────
 // 본문 추출
 // ─────────────────────────────────────────────────────────────
 
