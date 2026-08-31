@@ -29,6 +29,8 @@ function onOpen() {
 
   ui.createMenu('입찰서류')
     .addItem('유효기간 점검', 'debugDocumentData')
+    .addSeparator()
+    .addItem('hwpx 서식 구조 분석', 'analyzeHwpxForm')
     .addToUi();
 
   ui.createMenu('입찰공고')
