@@ -1109,7 +1109,6 @@
   let proposeMatches = [];          // [{record, scorePct, hits, sameOrg}]
   let proposeBid = null;            // 지금 열려 있는 공고
   let proposeGen = 0;               // 모달 세대 — 늦게 도착한 응답을 버리기 위한 것
-  let pendingBrief = null;          // 읽어는 놨지만 아직 적용 안 한 공고문 결과
   let briefText = '';               // 추출된 공고문 원문
   let briefHits = [];               // 화면에 강조할 근거 구절
   const selectedPerf = new Set();   // 실적 인덱스
@@ -1118,7 +1117,6 @@
   function openPropose(bid) {
     proposeBid = bid;
     proposeGen++;                 // 이전 공고의 늦은 응답을 무시하기 위한 세대 번호
-    pendingBrief = null;
     briefText = '';
 
     switchTab('propose');
@@ -1137,26 +1135,19 @@
     else { src.style.display = 'none'; }
 
     document.getElementById('brief-section').style.display = 'none';
-    document.getElementById('convert-guide').style.display = 'none';
 
     selectedPerf.clear();
     selectedHR.clear();
     proposeMatches = [];
 
     document.getElementById('propose-perf-list').innerHTML =
-      '<div class="empty-state">유사 실적을 찾는 중…</div>';
+      '<div class="empty-state">공고 첨부를 확인하는 중…</div>';
     document.getElementById('propose-perf-count').textContent = '';
     renderProposeHR();
     renderProposeSelected();
 
-    // 공고명 기준 결과를 먼저 띄우고,
-    google.script.run
-      .withSuccessHandler(onMatchesLoaded)
-      .withFailureHandler(onMatchFail)
-      .getBidMatches(bid.no, bid.ord);
-
-    // 어떤 첨부가 붙어 있는지 먼저 확인한다.
-    // 읽을 수 있는 파일이 있을 때만 본문 추출을 돌린다 (hwp 뿐이면 헛수고다)
+    // 매칭은 공고문을 읽은 뒤에만 한다.
+    // 공고명만으로 낸 결과는 근거가 약해 오히려 오판을 부른다.
     document.getElementById('attach-section').style.display = 'none';
     loadAttachmentInfo();
   }
@@ -1173,7 +1164,6 @@
       .withSuccessHandler(function (info) {
         if (gen !== proposeGen) return;
         renderAttachments(info);
-        renderConvertGuide(info);
         if (listOnly) return;
 
         if (info.hasReadable) {
@@ -1182,25 +1172,87 @@
           return;
         }
 
-        const hasHwp = info.files.some(function (f) { return f.ext === 'hwp'; });
-        setBriefStatus(
-          info.files.length
-            ? (hasHwp
-                ? '공고명 기준 — 읽을 수 있는 첨부가 없습니다. hwp를 hwpx로 저장해 폴더에 올리면 본문까지 반영됩니다.'
-                : '공고명 기준 — 읽을 수 있는 첨부가 없습니다.')
-            : '공고명 기준 — 이 공고에는 첨부파일이 없습니다.',
-          'failed',
-          info.files.length && !info.downloaded
-            ? { label: '첨부 내려받기', onClick: downloadAttachments }
-            : null);
+        // 첨부가 아예 없으면 읽을 공고문 자체가 없다 — 공고명으로라도 돌린다
+        if (!info.files.length) {
+          setBriefStatus('이 공고에는 첨부파일이 없습니다. 공고명만으로 찾은 결과라 근거가 약합니다.',
+            'failed');
+          google.script.run.withSuccessHandler(onMatchesLoaded)
+            .withFailureHandler(onMatchFail)
+            .getBidMatches(bid.no, bid.ord);
+          return;
+        }
+
+        // 파일은 있는데 못 읽는 경우 — 매칭을 하지 않고 변환을 요구한다
+        blockUntilReadable(info);
       })
       .withFailureHandler(function (err) {
         if (gen !== proposeGen) return;
         renderAttachments({ files: [], error: String(err.message || err) });
-        setBriefStatus('공고명 기준 — 첨부를 확인하지 못했습니다.', 'failed',
-          { label: '다시 시도', onClick: loadAttachmentInfo });
+        setBriefStatus('첨부를 확인하지 못했습니다.', 'failed',
+          { label: '다시 시도', onClick: function () { loadAttachmentInfo(); } });
+        document.getElementById('propose-perf-list').innerHTML =
+          '<div class="empty-state">첨부를 확인하지 못해 매칭을 진행하지 않았습니다.</div>';
       })
       .getBidAttachmentInfo(bid.no, bid.ord);
+  }
+
+  /**
+   * 읽을 수 있는 첨부가 없으면 매칭을 아예 하지 않는다.
+   *
+   * 공고명만으로 낸 결과는 '서울특별시' 같은 흔한 말에 걸려 엉뚱한 실적을
+   * 위로 올린다. 그럴듯한 오답을 보여주는 건 아무것도 안 보여주는 것보다 나쁘다.
+   * 변환해서 올리기 전까지 멈춘다.
+   */
+  function blockUntilReadable(info) {
+    document.getElementById('brief-section').style.display = 'none';
+    document.getElementById('propose-perf-count').textContent = '';
+    proposeMatches = [];
+    selectedPerf.clear();
+    renderProposeSelected();
+
+    const hwps = info.files.filter(function (f) { return f.ext === 'hwp'; });
+    setBriefStatus('공고문을 읽을 수 없어 매칭을 진행하지 않았습니다.', 'blocked');
+
+    const list = document.getElementById('propose-perf-list');
+    list.innerHTML =
+      '<div class="block-card">' +
+        '<div class="block-title">공고문을 읽을 수 있는 형식으로 올려주세요</div>' +
+        '<p class="block-desc">' +
+          (hwps.length
+            ? '이 공고의 첨부는 구형 <b>.hwp</b>라 프로그램이 내용을 읽을 수 없습니다. ' +
+              '공고명만으로 실적을 추천하면 엉뚱한 결과가 나오므로 여기서 멈췄습니다.'
+            : '읽을 수 있는 첨부(<b>.hwpx</b> 또는 <b>.pdf</b>)가 없어 매칭을 진행하지 않았습니다.') +
+        '</p>' +
+        (hwps.length
+          ? '<div class="block-files">' + hwps.map(function (f) {
+              return '<span class="block-file">' + escapeHtml(f.name) + '</span>';
+            }).join('') + '</div>'
+          : '') +
+        '<ol class="convert-steps">' +
+          '<li>아래 <b>' + (info.downloaded ? '폴더 열기' : '첨부 내려받기') + '</b>를 누릅니다</li>' +
+          '<li>내려받은 <b>.hwp</b>를 한컴오피스에서 엽니다</li>' +
+          '<li><b>다른 이름으로 저장 → 파일 형식 <code>.hwpx</code></b></li>' +
+          '<li>저장한 파일을 <b>같은 폴더에 업로드</b>합니다</li>' +
+          '<li><b>다시 분석</b>을 누릅니다</li>' +
+        '</ol>' +
+        '<div class="block-actions" id="block-actions"></div>' +
+      '</div>';
+
+    const actions = document.getElementById('block-actions');
+    if (!info.downloaded) {
+      addAction(actions, 'btn-primary', '첨부 내려받기', downloadAttachments);
+    } else {
+      if (info.folderUrl) {
+        const a = document.createElement('a');
+        a.className = 'btn-primary';
+        a.href = info.folderUrl;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.textContent = '폴더 열기';
+        actions.appendChild(a);
+      }
+      addAction(actions, 'btn-ghost', '다시 분석', reanalyze);
+    }
   }
 
   function downloadAttachments() {
@@ -1212,15 +1264,11 @@
       .withSuccessHandler(function (info) {
         if (gen !== proposeGen) return;
         renderAttachments(info);
-        renderConvertGuide(info);
         if (info.hasReadable) {
           setBriefStatus('공고문을 읽는 중…', 'loading');
           loadBriefInBackground();
         } else {
-          setBriefStatus(
-            '공고명 기준 — 내려받았지만 읽을 수 있는 파일이 없습니다. ' +
-            'hwp를 한컴에서 hwpx로 저장해 같은 폴더에 올려주세요.', 'failed',
-            { label: '다시 확인', onClick: loadAttachmentInfo });
+          blockUntilReadable(info);
         }
       })
       .withFailureHandler(function (err) {
@@ -1318,13 +1366,6 @@
                         '자 · ' + res.brief.source;
 
         showBrief(res);
-
-        if (selectedPerf.size) {
-          pendingBrief = res;
-          setBriefStatus('공고문을 읽었습니다. 목록을 갱신할까요? (선택하신 실적은 해제됩니다)',
-            'ready', { label: '적용', onClick: applyPendingBrief });
-          return;
-        }
         setBriefStatus(summary, 'applied');
         onMatchesLoaded(res);
       })
@@ -1340,16 +1381,6 @@
       .getBidBriefMatches(bid.no, bid.ord);
   }
 
-  function applyPendingBrief() {
-    if (!pendingBrief) return;
-    const res = pendingBrief;
-    pendingBrief = null;
-    selectedPerf.clear();
-    renderProposeSelected();
-    setBriefStatus('공고문 본문 반영 — ' + res.brief.chars.toLocaleString() +
-                   '자 · ' + res.brief.source, 'applied');
-    onMatchesLoaded(res);
-  }
 
   /** 공고문 원문을 화면에 띄운다 */
   function showBrief(res) {
@@ -1386,31 +1417,6 @@
     box.innerHTML = escapeHtml(briefText).replace(re, '<mark>$1</mark>');
   }
 
-  /** hwp 밖에 없을 때 변환 절차를 안내한다 */
-  function renderConvertGuide(info) {
-    const guide = document.getElementById('convert-guide');
-    const actions = document.getElementById('convert-actions');
-    const hasHwp = (info.files || []).some(function (f) { return f.ext === 'hwp'; });
-
-    if (info.hasReadable || !hasHwp) { guide.style.display = 'none'; return; }
-    guide.style.display = '';
-    actions.innerHTML = '';
-
-    if (!info.downloaded) {
-      addAction(actions, 'btn-primary', '첨부 내려받기', downloadAttachments);
-    } else {
-      if (info.folderUrl) {
-        const a = document.createElement('a');
-        a.className = 'btn-primary';
-        a.href = info.folderUrl;
-        a.target = '_blank';
-        a.rel = 'noopener';
-        a.textContent = '폴더 열기';
-        actions.appendChild(a);
-      }
-      addAction(actions, 'btn-ghost', '다시 분석', reanalyze);
-    }
-  }
 
   function addAction(parent, cls, label, onClick) {
     const b = document.createElement('button');

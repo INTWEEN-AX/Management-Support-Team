@@ -1209,20 +1209,62 @@
     padding: 0 1px;
   }
 
-  /* hwp 변환 안내 */
-  .convert-guide {
-    margin-top: 12px;
-    padding: 16px 18px;
-    border: 1px solid var(--amber-2);
+  /* 읽을 수 없는 형식이라 매칭을 멈췄을 때 */
+  .block-card {
+    padding: 22px 24px;
     background: var(--amber-5);
-    border-radius: var(--br-card-small);
   }
-  .convert-title {
-    font-size: var(--fs-h4);
+  .block-title {
+    font-size: var(--fs-h3);
+    line-height: 1.4;
     font-weight: var(--fw-bold);
     color: var(--amber-1);
     margin-bottom: 10px;
   }
+  .block-desc {
+    margin: 0 0 14px;
+    font-size: var(--fs-p);
+    line-height: 1.8;
+    color: var(--grey-1);
+  }
+  .block-desc code,
+  .block-desc b { font-weight: var(--fw-bold); }
+
+  .block-files {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+  .block-file {
+    font-size: var(--fs-caption);
+    line-height: 20px;
+    padding: 0 9px;
+    background: var(--background);
+    border: 1px solid var(--amber-2);
+    border-radius: 2px;
+    color: var(--grey-1);
+  }
+
+  .block-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+  .block-actions .btn-primary,
+  .block-actions .btn-ghost { text-decoration: none; }
+
+  .brief-bar.blocked {
+    background: var(--amber-5);
+    border-color: var(--amber-2);
+    border-left-color: var(--amber-1);
+  }
+  .brief-bar.blocked .brief-status {
+    color: var(--amber-1);
+    font-weight: var(--fw-bold);
+  }
+
   .convert-steps {
     margin: 0 0 14px;
     padding-left: 20px;
@@ -1238,9 +1280,6 @@
     border-radius: 2px;
     padding: 1px 5px;
   }
-  .convert-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-  .convert-actions .btn-primary,
-  .convert-actions .btn-ghost { text-decoration: none; }
 
   }
 
