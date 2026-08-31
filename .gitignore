@@ -13,3 +13,7 @@ __pycache__/
 # OS
 Thumbs.db
 .DS_Store
+
+# 배포 전 확인용 단독 미리보기 (생성물)
+portal_preview.html
+logo_trimmed.png
