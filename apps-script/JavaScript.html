@@ -60,18 +60,47 @@
     google.script.run.withSuccessHandler(onBidDataLoaded).withFailureHandler(onBidLoadError).getBidData();
   });
 
+  let currentTab = 'home';
+
   function initTabs() {
     // 탭 버튼, 홈으로 돌아가는 로고, 포털 카드 — data-tab 이 있으면 모두 이동 트리거
     document.querySelectorAll('[data-tab]').forEach(function (el) {
       el.addEventListener('click', function () { switchTab(el.dataset.tab); });
     });
+    initHistory();
     initPortalSearch();
   }
 
-  function switchTab(tab) {
+  /**
+   * 탭 전환을 브라우저 히스토리에 남긴다.
+   * 이게 없으면 뒤로가기가 곧바로 앱 밖으로 나가버린다.
+   *
+   * 웹앱은 googleusercontent.com 의 iframe 안에서 돌기 때문에 pushState 에
+   * URL 을 넘기면 SecurityError 가 난다. URL 없이 state 만 쌓으면 주소는
+   * 그대로면서 히스토리 항목만 생기고, 뒤로가기는 popstate 로 잡힌다.
+   */
+  function initHistory() {
+    try {
+      history.replaceState({ tab: 'home' }, '');
+    } catch (e) {
+      return; // 히스토리를 못 쓰는 환경이면 조용히 기존 동작 유지
+    }
+    window.addEventListener('popstate', function (e) {
+      switchTab((e.state && e.state.tab) || 'home', true);
+    });
+  }
+
+  function switchTab(tab, fromHistory) {
     if (!tab) return;
     var panel = document.getElementById('panel-' + tab);
     if (!panel) return;
+    if (tab === currentTab && fromHistory) return;
+
+    // 같은 탭을 다시 눌렀을 때 히스토리가 중복으로 쌓이지 않게 한다
+    if (!fromHistory && tab !== currentTab) {
+      try { history.pushState({ tab: tab }, ''); } catch (e) { /* 무시 */ }
+    }
+    currentTab = tab;
 
     document.querySelectorAll('.tab-btn').forEach(function (b) {
       b.classList.toggle('active', b.dataset.tab === tab);
