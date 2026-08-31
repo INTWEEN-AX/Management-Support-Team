@@ -1210,20 +1210,54 @@
     border: 1px solid var(--border);
     border-radius: var(--br-card-small);
   }
-  .brief-bar.loaded {
+  .brief-bar.applied {
     background: var(--primary-5);
     border-color: var(--primary-6);
   }
+  .brief-bar.ready {
+    background: var(--amber-5);
+    border-color: var(--amber-2);
+  }
+  .brief-bar.failed {
+    background: var(--grey-5);
+    border-color: var(--grey-4);
+  }
+
   .brief-status {
     flex: 1;
     min-width: 200px;
     font-size: var(--fs-p);
     color: var(--grey-2);
   }
-  .brief-bar.loaded .brief-status {
+  .brief-bar.applied .brief-status {
     color: var(--primary-1);
     font-weight: var(--fw-medium);
   }
+  .brief-bar.ready .brief-status {
+    color: var(--amber-1);
+    font-weight: var(--fw-medium);
+  }
+
+  /* 읽는 중에는 좌측에 진행 표시 */
+  .brief-bar.loading .brief-status {
+    padding-left: 24px;
+    position: relative;
+  }
+  .brief-bar.loading .brief-status::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    margin-top: -7px;
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--grey-3);
+    border-top-color: var(--primary-2);
+    border-radius: 50%;
+    animation: briefSpin .8s linear infinite;
+  }
+  @keyframes briefSpin { to { transform: rotate(360deg); } }
+
   .brief-bar button:disabled { opacity: .45; cursor: default; }
 
   .propose-section + .propose-section { margin-top: var(--sp-element); }
