@@ -495,10 +495,12 @@
     document.getElementById('hr-search-input').addEventListener('input', renderHRAll);
     document.getElementById('hr-dept-select').addEventListener('change', renderHRAll);
     document.getElementById('hr-status-select').addEventListener('change', renderHRAll);
+    document.getElementById('hr-sort-select').addEventListener('change', renderHRAll);
     document.getElementById('hr-reset-btn').addEventListener('click', function () {
       document.getElementById('hr-search-input').value = '';
       document.getElementById('hr-dept-select').value = '';
       document.getElementById('hr-status-select').value = '';
+      document.getElementById('hr-sort-select').value = 'dept_asc';
       activeHRDeptFilter = null;
       renderHRAll();
     });
@@ -612,6 +614,18 @@
     renderHRAll();
   }
 
+  /**
+   * 입사일을 정렬용 숫자로. 파싱 실패하면 null.
+   * 시트 값이 Date 면 'yyyy-MM-dd' 로 넘어오지만, 텍스트로 적혀 있으면
+   * '2026. 03. 16' 처럼 오기도 해서 구분자를 가리지 않고 읽는다.
+   */
+  function hrJoinTime(r) {
+    const m = String(r.joinDate || '').match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+    if (!m) return null;
+    const d = new Date(+m[1], +m[2] - 1, +m[3]);
+    return isNaN(d.getTime()) ? null : d.getTime();
+  }
+
   function renderHRList(records) {
     const wrap = document.getElementById('hr-list');
     wrap.innerHTML = '';
@@ -621,9 +635,29 @@
       return;
     }
 
+    const sortMode = document.getElementById('hr-sort-select').value;
+    const byName = function (a, b) {
+      return String(a.name || '').localeCompare(String(b.name || ''), 'ko');
+    };
+
     const sorted = records.slice().sort(function (a, b) {
-      return String(a.dept || '').localeCompare(String(b.dept || ''), 'ko') ||
-        String(a.name || '').localeCompare(String(b.name || ''), 'ko');
+      switch (sortMode) {
+        case 'join_asc':
+        case 'join_desc': {
+          // 입사일이 비어 있는 인원은 정렬 방향과 무관하게 항상 맨 아래로
+          const ta = hrJoinTime(a), tb = hrJoinTime(b);
+          if (ta === null && tb === null) return byName(a, b);
+          if (ta === null) return 1;
+          if (tb === null) return -1;
+          if (ta !== tb) return sortMode === 'join_asc' ? ta - tb : tb - ta;
+          return byName(a, b);
+        }
+        case 'name_asc':
+          return byName(a, b);
+        case 'dept_asc':
+        default:
+          return String(a.dept || '').localeCompare(String(b.dept || ''), 'ko') || byName(a, b);
+      }
     });
 
     sorted.forEach(function (r) {
@@ -642,7 +676,10 @@
             '<div class="org-name">' + escapeHtml(r.dept || '') + '</div>' +
           '</div>' +
           '<div class="field-tag">' + escapeHtml(r.position || '-') + '</div>' +
-          '<div class="field-tag">' + escapeHtml(r.career || '-') + '</div>' +
+          '<div class="hr-tenure">' +
+            escapeHtml(r.career || '-') +
+            (r.joinDate ? '<span>' + escapeHtml(r.joinDate) + ' 입사</span>' : '') +
+          '</div>' +
           '<div class="field-tag"><span class="dot" style="background:' + statusColor + '"></span>' + escapeHtml(r.status) + '</div>' +
           '<div class="expand-caret">▶</div>' +
         '</div>' +
