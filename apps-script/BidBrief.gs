@@ -58,15 +58,74 @@ function getBidBriefMatches(bidNo, bidOrd) {
   var query = [bid.name, bid.demandOrg, bid.noticeOrg, brief.text]
     .filter(Boolean).join(' ');
 
+  var matches = matchPerformance_({
+    name: query,
+    demandOrg: bid.demandOrg,
+    noticeOrg: bid.noticeOrg
+  });
+  addBriefContexts_(matches, brief.text);
+
   return JSON.parse(JSON.stringify({
     bid: bid,
-    brief: { source: brief.source, chars: brief.text.length, note: brief.note },
-    matches: matchPerformance_({
-      name: query,
-      demandOrg: bid.demandOrg,
-      noticeOrg: bid.noticeOrg
-    })
+    brief: {
+      source: brief.source,
+      chars: brief.text.length,
+      note: brief.note,
+      text: brief.text          // 화면에서 공고문 원문을 보여주기 위해 함께 넘긴다
+    },
+    matches: matches
   }));
+}
+
+/** 캐시(_본문.txt)를 버리고 다시 추출한다 — hwpx 를 새로 올린 뒤 쓴다 */
+function refreshBidBrief(bidNo, bidOrd) {
+  var bids = getBidData();
+  var no = String(bidNo || '').trim();
+  var bid = null;
+  for (var i = 0; i < bids.length; i++) {
+    if (String(bids[i].no).trim() === no) { bid = bids[i]; break; }
+  }
+  if (!bid) throw new Error('공고를 찾지 못했습니다: ' + no);
+
+  try {
+    var parent = getBidAttachFolder_();
+    var it = parent.getFoldersByName(bidFolderName_(bid));
+    if (it.hasNext()) {
+      var cached = it.next().getFilesByName(BRIEF_CACHE_NAME);
+      while (cached.hasNext()) cached.next().setTrashed(true);
+    }
+  } catch (e) {
+    Logger.log('본문 캐시 삭제 실패(무시): ' + e);
+  }
+  return getBidBriefMatches(bidNo, bidOrd);
+}
+
+/**
+ * 각 실적이 공고문의 '어느 대목' 때문에 걸렸는지 문맥을 붙인다.
+ * 근거 구절만 보여주면 왜 뽑혔는지 알기 어렵다 —
+ * 공고문에서 그 말이 나온 문장을 함께 보여줘야 판단할 수 있다.
+ */
+function addBriefContexts_(matches, briefText) {
+  if (!briefText) return;
+  var lower = briefText.toLowerCase();
+
+  matches.forEach(function (m) {
+    var out = [];
+    (m.hits || []).forEach(function (h) {
+      if (out.length >= 2) return;
+      var at = lower.indexOf(String(h).toLowerCase());
+      if (at === -1) return;
+      var from = Math.max(0, at - 45);
+      var to = Math.min(briefText.length, at + h.length + 45);
+      out.push({
+        term: h,
+        text: (from > 0 ? '…' : '') +
+              briefText.slice(from, to).replace(/\s+/g, ' ').trim() +
+              (to < briefText.length ? '…' : '')
+      });
+    });
+    m.contexts = out;
+  });
 }
 
 // ─────────────────────────────────────────────────────────────

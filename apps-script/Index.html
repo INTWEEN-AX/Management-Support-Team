@@ -304,66 +304,101 @@
       </div>
     </div>
 
-    <!-- ============ 제안자료 만들기 (입찰공고에서 열림) ============ -->
-    <div class="modal-backdrop" id="propose-modal" style="display:none">
-      <div class="modal">
-        <header class="modal-head">
-          <div>
-            <div class="modal-eyebrow">제안자료 만들기</div>
-            <div class="modal-title" id="propose-bid-name">–</div>
-            <div class="modal-sub" id="propose-bid-meta"></div>
-          </div>
-          <button type="button" class="modal-close" id="propose-close" aria-label="닫기">✕</button>
-        </header>
+    <!-- ============ 제안자료 만들기 (입찰공고에서 넘어옴) ============ -->
+    <div class="panel" id="panel-propose" style="display:none">
+      <div class="panel-body">
 
-        <div class="modal-body">
-
-          <!-- 상태 문구와 버튼은 JavaScript.html 의 setBriefStatus() 가 채운다 -->
-          <section class="brief-bar loading" id="brief-bar">
-            <div class="brief-status" id="brief-status">공고 첨부를 확인하는 중…</div>
-          </section>
-
-          <section class="propose-section" id="attach-section" style="display:none">
-            <div class="propose-head">
-              <h3>공고 첨부</h3>
-              <span class="propose-hint" id="attach-count"></span>
-              <a class="attach-folder" id="attach-folder" href="#" target="_blank" rel="noopener" style="display:none">드라이브 폴더 열기 →</a>
-            </div>
-            <div class="attach-list" id="attach-list"></div>
-          </section>
-
-          <section class="propose-section">
-            <div class="propose-head">
-              <h3>유사 수행실적</h3>
-              <span class="propose-hint" id="propose-perf-count"></span>
-            </div>
-            <div class="propose-list" id="propose-perf-list">
-              <div class="empty-state">불러오는 중…</div>
-            </div>
-          </section>
-
-          <section class="propose-section">
-            <div class="propose-head">
-              <h3>참여인력</h3>
-              <input type="text" id="propose-hr-search" placeholder="이름 · 부서 검색">
-            </div>
-            <div class="propose-list" id="propose-hr-list">
-              <div class="empty-state">불러오는 중…</div>
-            </div>
-          </section>
-
+        <div class="propose-topbar">
+          <button type="button" class="back-link" data-tab="bid">◂ 입찰공고 목록</button>
+          <a class="bid-link" id="propose-source" href="#" target="_blank" rel="noopener" style="display:none">나라장터 원문 →</a>
         </div>
 
-        <footer class="modal-foot">
-          <div class="propose-selected" id="propose-selected">선택 없음</div>
-          <div class="propose-actions">
-            <button type="button" class="btn-ghost" id="copy-perf">실적표 복사</button>
-            <button type="button" class="btn-ghost" id="copy-hr">인력표 복사</button>
-            <button type="button" class="btn-primary" id="copy-all">전체 복사</button>
+        <header class="propose-header">
+          <h2 id="propose-bid-name">–</h2>
+          <div class="propose-meta" id="propose-bid-meta"></div>
+        </header>
+
+        <!-- 상태 문구와 버튼은 JavaScript.html 의 setBriefStatus() 가 채운다 -->
+        <section class="brief-bar loading" id="brief-bar">
+          <div class="brief-status" id="brief-status">공고 첨부를 확인하는 중…</div>
+        </section>
+
+        <div class="propose-grid">
+
+          <!-- ─ 왼쪽: 공고문 원문 · 첨부 ─ -->
+          <div class="propose-col">
+
+            <section class="propose-section" id="attach-section" style="display:none">
+              <div class="propose-head">
+                <h3>공고 첨부</h3>
+                <span class="propose-hint" id="attach-count"></span>
+                <a class="attach-folder" id="attach-folder" href="#" target="_blank" rel="noopener" style="display:none">폴더 열기 →</a>
+              </div>
+              <div class="attach-list" id="attach-list"></div>
+              <div class="convert-guide" id="convert-guide" style="display:none">
+                <div class="convert-title">한글 파일(.hwp)은 그대로 읽을 수 없습니다</div>
+                <ol class="convert-steps">
+                  <li>아래 <b>폴더 열기</b>로 드라이브 폴더에 들어갑니다</li>
+                  <li>내려받은 <b>.hwp</b>를 한컴오피스에서 엽니다</li>
+                  <li><b>다른 이름으로 저장 → 파일 형식 <code>.hwpx</code></b></li>
+                  <li>저장한 파일을 <b>같은 폴더에 업로드</b>합니다</li>
+                  <li>아래 <b>다시 분석</b>을 누릅니다</li>
+                </ol>
+                <div class="convert-actions" id="convert-actions"></div>
+              </div>
+            </section>
+
+            <section class="propose-section" id="brief-section" style="display:none">
+              <div class="propose-head">
+                <h3>공고문 본문</h3>
+                <span class="propose-hint" id="brief-meta"></span>
+                <label class="brief-toggle">
+                  <input type="checkbox" id="brief-highlight" checked> 근거 강조
+                </label>
+              </div>
+              <div class="brief-text" id="brief-text"></div>
+            </section>
+
           </div>
-        </footer>
+
+          <!-- ─ 오른쪽: 매칭 결과 · 선택 ─ -->
+          <div class="propose-col">
+
+            <section class="propose-section">
+              <div class="propose-head">
+                <h3>유사 수행실적</h3>
+                <span class="propose-hint" id="propose-perf-count"></span>
+              </div>
+              <div class="propose-list tall" id="propose-perf-list">
+                <div class="empty-state">불러오는 중…</div>
+              </div>
+            </section>
+
+            <section class="propose-section">
+              <div class="propose-head">
+                <h3>참여인력</h3>
+                <input type="text" id="propose-hr-search" placeholder="이름 · 부서 검색">
+              </div>
+              <div class="propose-list" id="propose-hr-list">
+                <div class="empty-state">불러오는 중…</div>
+              </div>
+            </section>
+
+          </div>
+        </div>
+
+      </div>
+
+      <div class="propose-dock">
+        <div class="propose-selected" id="propose-selected">선택 없음</div>
+        <div class="propose-actions">
+          <button type="button" class="btn-ghost" id="copy-perf">실적표 복사</button>
+          <button type="button" class="btn-ghost" id="copy-hr">인력표 복사</button>
+          <button type="button" class="btn-primary" id="copy-all">전체 복사</button>
+        </div>
       </div>
     </div>
+
 
     <!-- ============ 입찰서류 ============ -->
     <div class="panel" id="panel-documents" style="display:none">
