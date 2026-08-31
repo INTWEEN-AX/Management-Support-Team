@@ -33,6 +33,7 @@ function onOpen() {
 
   ui.createMenu('입찰공고')
     .addItem('지금 수집 실행', 'collectBidsManual')
+    .addItem('공고 첨부파일 받기', 'fetchBidAttachments')
     .addSeparator()
     .addItem('설정 (인증키/키워드)', 'showBidSettings')
     .addItem('현재 설정 확인', 'checkBidSettings')

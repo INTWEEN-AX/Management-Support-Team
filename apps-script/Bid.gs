@@ -635,6 +635,137 @@ function testBidApi() {
   }
 }
 
+// ─────────────────────────────────────────────────────────────
+// 공고 첨부파일 (규격서 · 제안요청서 · 제출서식)
+//
+// 나라장터 응답에는 첨부가 ntceSpecDocUrl1~10 / ntceSpecFileNm1~10 으로
+// 들어온다. 별도 오퍼레이션을 부를 필요 없이 공고번호로 다시 조회하면 된다.
+// ─────────────────────────────────────────────────────────────
+
+var BID_SPEC_MAX = 10;
+
+/** 공고번호로 단건 조회 (inqryDiv=2 = 공고번호 기준) */
+function fetchBidByNo_(bidNtceNo) {
+  var all = [];
+  G2B_OPERATIONS.forEach(function (spec) {
+    if (all.length) return;
+    try {
+      var res = fetchBidPage_(spec.op, {
+        pageNo: 1,
+        numOfRows: 10,
+        inqryDiv: 2,
+        bidNtceNo: String(bidNtceNo).trim(),
+        type: 'json'
+      });
+      if (res.items.length) all = res.items;
+    } catch (e) {
+      Logger.log('공고 단건 조회 실패 (' + spec.label + '): ' + e);
+    }
+  });
+  return all;
+}
+
+/** 응답에서 첨부 목록을 뽑는다 → [{name, url}] */
+function extractSpecDocs_(item) {
+  var docs = [];
+  for (var i = 1; i <= BID_SPEC_MAX; i++) {
+    var url = pick_(item, ['ntceSpecDocUrl' + i]);
+    if (!url) continue;
+    docs.push({
+      name: pick_(item, ['ntceSpecFileNm' + i]) || ('첨부' + i),
+      url: url
+    });
+  }
+  return docs;
+}
+
+/** 첨부를 저장할 드라이브 폴더 (없으면 만들고 기억) */
+function getBidAttachFolder_() {
+  var props = bidProps_();
+  var id = String(props.getProperty('BID_ATTACH_FOLDER_ID') || '').trim();
+  if (id) {
+    try { return DriveApp.getFolderById(id); } catch (e) { /* 지워졌으면 새로 만든다 */ }
+  }
+  var folder = DriveApp.createFolder('입찰공고_첨부');
+  props.setProperty('BID_ATTACH_FOLDER_ID', folder.getId());
+  return folder;
+}
+
+/** 확장자로 자동화 가능 여부를 가늠한다 */
+function classifyAttachment_(fileName) {
+  var ext = String(fileName).toLowerCase().replace(/^.*\./, '');
+  if (ext === 'hwpx') return { ext: ext, note: '✅ 바로 채우기 가능' };
+  if (ext === 'hwp')  return { ext: ext, note: '⚠ 한컴에서 hwpx로 저장 필요' };
+  if (ext === 'pdf')  return { ext: ext, note: '📖 읽기 전용 (채우기 불가)' };
+  if (ext === 'zip')  return { ext: ext, note: '📦 압축 — 풀어서 확인 필요' };
+  return { ext: ext, note: '— ' + ext };
+}
+
+/**
+ * 메뉴: 공고 첨부파일 받기
+ * 공고번호를 입력받아 규격서·제안요청서·제출서식을 드라이브에 저장한다.
+ */
+function fetchBidAttachments() {
+  var ui = SpreadsheetApp.getUi();
+
+  var res = ui.prompt(
+    '공고 첨부파일 받기',
+    '공고번호를 입력하세요. (포털 입찰공고 목록의 상세보기에서 확인)\n' +
+    '예) 20260831001',
+    ui.ButtonSet.OK_CANCEL);
+  if (res.getSelectedButton() !== ui.Button.OK) return;
+
+  var no = res.getResponseText().trim();
+  if (!no) return;
+
+  try {
+    var items = fetchBidByNo_(no);
+    if (!items.length) {
+      ui.alert('공고번호 ' + no + ' 를 찾지 못했습니다.\n번호를 다시 확인해주세요.');
+      return;
+    }
+
+    var item = items[0];
+    var docs = extractSpecDocs_(item);
+    if (!docs.length) {
+      ui.alert(
+        '공고는 찾았지만 첨부파일이 없습니다.\n\n' +
+        '공고명: ' + pick_(item, ['bidNtceNm']) + '\n\n' +
+        '나라장터에서 직접 확인해보세요:\n' + pick_(item, ['bidNtceDtlUrl']));
+      return;
+    }
+
+    var parent = getBidAttachFolder_();
+    var safeName = String(pick_(item, ['bidNtceNm'])).replace(/[\\\/:*?"<>|]/g, '_').slice(0, 60);
+    var folder = parent.createFolder(no + '_' + safeName);
+
+    var lines = [], failed = [];
+    docs.forEach(function (d) {
+      try {
+        var resp = UrlFetchApp.fetch(d.url, { muteHttpExceptions: true, followRedirects: true });
+        if (resp.getResponseCode() !== 200) throw new Error('HTTP ' + resp.getResponseCode());
+        var blob = resp.getBlob().setName(d.name);
+        folder.createFile(blob);
+        var cls = classifyAttachment_(d.name);
+        lines.push('  ' + cls.note + '  ' + d.name);
+      } catch (e) {
+        failed.push('  ✗ ' + d.name + ' — ' + (e.message || e));
+      }
+    });
+
+    ui.alert(
+      '첨부 ' + lines.length + '/' + docs.length + '건 저장 완료\n\n' +
+      '공고명: ' + pick_(item, ['bidNtceNm']).slice(0, 60) + '\n' +
+      '저장 위치: ' + parent.getName() + ' / ' + folder.getName() + '\n\n' +
+      lines.join('\n') +
+      (failed.length ? '\n\n실패:\n' + failed.join('\n') : '') +
+      '\n\n폴더 열기:\n' + folder.getUrl());
+
+  } catch (e) {
+    ui.alert('첨부파일 받기 실패\n\n' + (e.message || e));
+  }
+}
+
 /**
  * 메뉴: 마감일시 필드 진단
  *
