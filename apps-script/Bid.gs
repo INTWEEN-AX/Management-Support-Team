@@ -457,13 +457,36 @@ function escapeAttr_(s) {
   return escapeHtml_(s).replace(/"/g, '&quot;');
 }
 
-/** '202608311800' → '2026-08-31 18:00' */
+/**
+ * 어떤 모양으로 들어오든 'yyyy-MM-dd HH:mm' 로 통일한다.
+ *
+ * 시트에 '2026-08-31 18:00' 을 넣으면 스프레드시트가 이를 날짜로 자동 인식해
+ * 다시 읽을 때 Date 객체로 돌아온다. 그대로 String() 하면
+ * "Mon Aug 31 2026 18:00:00 GMT+0900" 이 되어 프론트엔드 파서가 못 읽고,
+ * 결과적으로 D-day 가 전부 '–' 로 표시된다. 그래서 Date 를 먼저 처리한다.
+ */
 function formatBidDt_(v) {
+  if (Object.prototype.toString.call(v) === '[object Date]') {
+    return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm');
+  }
+
   var s = String(v == null ? '' : v).trim();
+  if (!s) return '';
+
+  // '202608311800' / '20260831'
   var m = s.match(/^(\d{4})(\d{2})(\d{2})(\d{2})?(\d{2})?$/);
   if (m) {
     return m[1] + '-' + m[2] + '-' + m[3] + (m[4] ? ' ' + m[4] + ':' + (m[5] || '00') : '');
   }
+
+  // '2026-08-31 18:00' / '2026/08/31 18:00:00' → 구분자·초 단위를 정규화
+  m = s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})(?:[ T](\d{1,2}):(\d{2}))?/);
+  if (m) {
+    var pad = function (n) { return ('0' + n).slice(-2); };
+    return m[1] + '-' + pad(m[2]) + '-' + pad(m[3]) +
+           (m[4] ? ' ' + pad(m[4]) + ':' + m[5] : '');
+  }
+
   return s;
 }
 
