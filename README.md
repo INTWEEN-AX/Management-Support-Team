@@ -4,27 +4,30 @@
 재직증명서를 자동 발급하는 사내 도구입니다.
 **Google Apps Script 단독 구성 — 별도 서버 없음, 운영비 0원.**
 
-기능은 두 가지입니다.
-
 | 기능 | 형태 | 하는 일 |
 |---|---|---|
 | **대시보드** | 웹앱 (URL 접속) | 실적증빙리스트 검색·통계, 인력현황 조회 |
+| **입찰공고 수집** | 웹앱 + 자동 트리거 | 나라장터 공고를 매일 키워드로 걸러 수집 + 신규 건 메일 알림 |
 | **재직증명서 발급** | 스프레드시트 메뉴 | 행 선택 → hwpx 생성 → 드라이브 저장 + 다운로드 링크 |
+| **생일 축하 메일** | 자동 트리거 | 인력 명단의 생일자에게 매일 오전 자동 발송 |
 
 ---
 
 ## 파일 구성
 
-Apps Script 프로젝트의 파일 6개가 이 저장소의 `apps-script/` 와 1:1로 대응합니다.
+Apps Script 프로젝트의 파일들이 이 저장소의 `apps-script/` 와 1:1로 대응합니다.
 
 | 파일 | 역할 |
 |---|---|
 | `apps-script/Menu.gs` | `onOpen` 메뉴 등록, `include()` |
 | `apps-script/Certificate.gs` | 재직증명서 발급 (hwpx 텍스트 치환) |
 | `apps-script/Dashboard.gs` | `doGet` 웹앱 진입점, 실적·인력 데이터 로드 |
-| `apps-script/Index.html` | 대시보드 화면 구조 |
-| `apps-script/Stylesheet.html` | 디자인 (shadcn/ui zinc 이식) |
+| `apps-script/Bid.gs` | 나라장터 입찰공고 수집·저장·알림 |
+| `apps-script/Code.gs` | 생일 축하 메일 발송 |
+| `apps-script/Index.html` | 포털 홈 + 각 탭 화면 구조 |
+| `apps-script/Stylesheet.html` | 디자인 (다크 네이비 + 골드) |
 | `apps-script/JavaScript.html` | 필터·차트·목록 렌더링 |
+| `apps-script/birthday_template.html` | 생일 메일 본문 템플릿 |
 
 그 외:
 
@@ -110,9 +113,56 @@ var HR_STATUS_TABS = ['재직(상근)', '재직(비상근)', '휴직'];
 | `showSettings` / `checkSettings` / `diagnoseColumns` | 메뉴 [재직증명서] |
 | `debugPerformanceData` / `debugHRData` | 메뉴 [대시보드] — 파싱 점검용 |
 | `doGet` | 웹앱 접속 시 자동 — **직접 실행하면 오류** |
-| `getPerformanceData` / `getHRData` | 브라우저에서 `google.script.run` |
+| `getPerformanceData` / `getHRData` / `getBidData` | 브라우저에서 `google.script.run` |
+| `collectBids` | 매일 오전 8시 트리거 — 나라장터 수집 |
+| `collectBidsManual` / `showBidSettings` / `testBidApi` / `debugBidData` | 메뉴 [입찰공고] |
 | `include` | `Index.html` 이 자동 호출 |
 | `_` 로 끝나는 함수 | 내부 전용 |
+
+---
+
+## 입찰공고 자동 수집
+
+조달청 **나라장터 입찰공고정보서비스**(공공데이터포털 `15129394`)를 매일 호출해서,
+공고명이 설정된 키워드에 걸리는 것만 스프레드시트 `입찰공고` 탭에 누적합니다.
+
+### 최초 설정
+
+1. [공공데이터포털 활용신청](https://www.data.go.kr/data/15129394/openapi.do) → 인증키 발급
+   (승인은 보통 즉시. 발급 직후에는 반영까지 최대 1시간 걸릴 수 있습니다)
+2. 메뉴 **[입찰공고] → [설정 (인증키/키워드)]** 에서 인증키·키워드·알림 수신자 입력
+3. 메뉴 **[입찰공고] → [API 연결 테스트]** 로 통신 확인
+4. 메뉴 **[입찰공고] → [트리거 등록/재등록]** 으로 매일 자동 수집 켜기
+
+`UrlFetchApp` 을 새로 쓰기 때문에 **첫 실행 때 권한 재승인 화면이 한 번 더 뜹니다.**
+
+### 동작 방식
+
+| 항목 | 값 |
+|---|---|
+| 조회 범위 | 최근 2일치 (트리거가 한 번 걸러도 메우도록) |
+| 업무구분 | 용역 → 물품 → 공사 순으로 각각 조회 |
+| 중복 제거 | `공고번호 + 차수` 기준 |
+| 저장 위치 | 실적 스프레드시트의 `입찰공고` 탭 (`BID_SHEET_ID` 로 변경 가능) |
+| 알림 | 신규 건이 있을 때만 메일 발송 |
+
+키워드는 Script Properties `BID_KEYWORDS` / `BID_EXCLUDE_KEYWORDS` 에 저장되며,
+설정하지 않으면 `Bid.gs` 의 기본값(행사·박람회·창업·교육 등)이 쓰입니다.
+
+> ⚠️ **실제 투찰은 자동화하지 않습니다.** 공동인증서와 지문보안토큰이 필요하고
+> 자동화 자체가 나라장터 약관 위반입니다. 이 기능은 **공고 수집·알림까지**입니다.
+
+### 조달청 API 경로에 대해
+
+엔드포인트가 개편 이력 때문에 두 가지로 돌아다닙니다.
+
+```
+https://apis.data.go.kr/1230000/ad/BidPublicInfoService/...
+https://apis.data.go.kr/1230000/BidPublicInfoService/...
+```
+
+`Bid.gs` 는 첫 호출 때 둘 다 시도하고, 성공한 쪽을 Script Properties `G2B_BASE_OK` 에
+기억해둡니다. 조달청이 경로를 또 바꾸면 이 값을 지우면 다시 탐색합니다.
 
 ---
 

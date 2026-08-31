@@ -34,7 +34,10 @@
     home: '업무 도구 모음',
     performance: '제안서 작성 참고용 · 실적증빙리스트 연동',
     hr: '조직 구성 및 인사정보 조회 · 개인정보는 상세보기에서만 노출',
+    bid: '나라장터 공고 자동 수집 · 매일 오전 갱신 · 투찰은 나라장터에서 직접',
   };
+
+  let ALL_BID_RECORDS = [];
 
   let ALL_HR_RECORDS = [];
   let activeHRDeptFilter = null;
@@ -54,6 +57,7 @@
     initTabs();
     google.script.run.withSuccessHandler(onDataLoaded).withFailureHandler(onLoadError).getPerformanceData();
     google.script.run.withSuccessHandler(onHRDataLoaded).withFailureHandler(onHRLoadError).getHRData();
+    google.script.run.withSuccessHandler(onBidDataLoaded).withFailureHandler(onBidLoadError).getBidData();
   });
 
   function initTabs() {
@@ -616,6 +620,205 @@
             '<div><b>전화번호</b>' + escapeHtml(r.phone || '-') + '</div>' +
             '<div><b>인트윈 입사년월일</b>' + escapeHtml(r.joinDate || '-') + '</div>' +
           '</div>' +
+        '</div>';
+
+      row.querySelector('.ledger-row-main').addEventListener('click', function () {
+        row.classList.toggle('open');
+      });
+
+      wrap.appendChild(row);
+    });
+  }
+
+  // ================= 입찰공고 =================
+
+  function onBidLoadError(err) {
+    document.getElementById('bid-list').innerHTML =
+      '<div class="empty-state">입찰공고를 불러오지 못했습니다.<br>' + escapeHtml(err.message || err) +
+      '<br><br>스프레드시트 메뉴 [입찰공고] → [설정] 에서 인증키를 등록했는지 확인해주세요.</div>';
+  }
+
+  function onBidDataLoaded(records) {
+    if (!records || !Array.isArray(records)) {
+      onBidLoadError(new Error('서버 응답이 비어있습니다.'));
+      return;
+    }
+    ALL_BID_RECORDS = records;
+    populateBidKindFilter(records);
+
+    ['bid-search-input', 'bid-kind-select', 'bid-status-select', 'bid-sort-select']
+      .forEach(function (id) {
+        const el = document.getElementById(id);
+        el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', renderBidAll);
+      });
+
+    document.getElementById('bid-reset-btn').addEventListener('click', function () {
+      document.getElementById('bid-search-input').value = '';
+      document.getElementById('bid-kind-select').value = '';
+      document.getElementById('bid-status-select').value = 'open';
+      document.getElementById('bid-sort-select').value = 'close_asc';
+      renderBidAll();
+    });
+
+    renderBidAll();
+  }
+
+  function populateBidKindFilter(records) {
+    const sel = document.getElementById('bid-kind-select');
+    Array.from(new Set(records.map(function (r) { return r.kind; })))
+      .filter(Boolean)
+      .sort(function (a, b) { return a.localeCompare(b, 'ko'); })
+      .forEach(function (k) {
+        const o = document.createElement('option');
+        o.value = k;
+        o.textContent = k;
+        sel.appendChild(o);
+      });
+  }
+
+  /** '2026-08-31 18:00' → Date (파싱 실패 시 null) */
+  function parseBidDate(s) {
+    const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})(?:\s+(\d{2}):(\d{2}))?/);
+    if (!m) return null;
+    return new Date(+m[1], +m[2] - 1, +m[3], +(m[4] || 23), +(m[5] || 59));
+  }
+
+  /** 마감까지 남은 일수 (마감일 없으면 null, 이미 지났으면 음수) */
+  function daysToClose(r) {
+    const d = parseBidDate(r.closeDt);
+    if (!d) return null;
+    return Math.ceil((d.getTime() - Date.now()) / 86400000);
+  }
+
+  function currentBidFilters() {
+    return {
+      q: document.getElementById('bid-search-input').value.trim().toLowerCase(),
+      kind: document.getElementById('bid-kind-select').value,
+      status: document.getElementById('bid-status-select').value,
+    };
+  }
+
+  function applyBidFilters(records, f) {
+    return records.filter(function (r) {
+      if (f.kind && r.kind !== f.kind) return false;
+
+      if (f.status) {
+        const d = daysToClose(r);
+        // 마감일을 못 읽은 공고는 숨기지 않는다 (놓치는 것보다 낫다)
+        if (d !== null) {
+          if (f.status === 'open' && d < 0) return false;
+          if (f.status === 'urgent' && (d < 0 || d > 3)) return false;
+        }
+      }
+
+      if (f.q) {
+        const hay = (r.name + ' ' + r.noticeOrg + ' ' + r.demandOrg + ' ' + r.keywords).toLowerCase();
+        if (hay.indexOf(f.q) === -1) return false;
+      }
+      return true;
+    });
+  }
+
+  function renderBidAll() {
+    const f = currentBidFilters();
+    const filtered = applyBidFilters(ALL_BID_RECORDS, f);
+    renderBidStats(filtered);
+    renderBidList(filtered);
+    document.getElementById('bid-result-count').textContent =
+      filtered.length + '건 / 전체 ' + ALL_BID_RECORDS.length + '건';
+  }
+
+  function renderBidStats(records) {
+    const urgent = records.filter(function (r) {
+      const d = daysToClose(r);
+      return d !== null && d >= 0 && d <= 3;
+    }).length;
+    const budgetSum = records.reduce(function (s, r) { return s + (r.budget || 0); }, 0);
+    const latest = ALL_BID_RECORDS.reduce(function (m, r) {
+      return (r.collectedAt && r.collectedAt > m) ? r.collectedAt : m;
+    }, '');
+
+    document.getElementById('bid-stat-total').textContent = records.length.toLocaleString();
+    document.getElementById('bid-stat-urgent').textContent = urgent.toLocaleString();
+    document.getElementById('bid-stat-budget').textContent = budgetSum ? formatEok(budgetSum) : '–';
+    document.getElementById('bid-stat-collected').textContent = latest ? latest.slice(5) : '–';
+  }
+
+  function renderBidList(records) {
+    const wrap = document.getElementById('bid-list');
+    wrap.innerHTML = '';
+
+    if (!records.length) {
+      wrap.innerHTML = ALL_BID_RECORDS.length
+        ? '<div class="empty-state">조건에 맞는 공고가 없습니다. 필터를 조정해보세요.</div>'
+        : '<div class="empty-state">아직 수집된 공고가 없습니다.<br>' +
+          '스프레드시트 메뉴 [입찰공고] → [지금 수집 실행] 을 한 번 눌러주세요.</div>';
+      return;
+    }
+
+    const sortMode = document.getElementById('bid-sort-select').value;
+    const sorted = records.slice().sort(function (a, b) {
+      switch (sortMode) {
+        case 'notice_desc':
+          return String(b.noticeDt || '').localeCompare(String(a.noticeDt || ''));
+        case 'budget_desc':
+          return (Number(b.budget) || 0) - (Number(a.budget) || 0);
+        case 'close_asc':
+        default: {
+          // 마감일 없는 건은 항상 뒤로
+          const da = daysToClose(a), db = daysToClose(b);
+          if (da === null && db === null) return 0;
+          if (da === null) return 1;
+          if (db === null) return -1;
+          return da - db;
+        }
+      }
+    });
+
+    sorted.forEach(function (r) {
+      const row = document.createElement('div');
+      row.className = 'ledger-row';
+
+      const d = daysToClose(r);
+      let ddayText, ddayClass;
+      if (d === null)      { ddayText = '–';        ddayClass = 'dday-none'; }
+      else if (d < 0)      { ddayText = '마감';      ddayClass = 'dday-closed'; }
+      else if (d === 0)    { ddayText = 'D-DAY';    ddayClass = 'dday-urgent'; }
+      else if (d <= 3)     { ddayText = 'D-' + d;   ddayClass = 'dday-urgent'; }
+      else if (d <= 7)     { ddayText = 'D-' + d;   ddayClass = 'dday-soon'; }
+      else                 { ddayText = 'D-' + d;   ddayClass = 'dday-far'; }
+
+      const budgetText = r.budget ? Math.round(r.budget / 10000).toLocaleString() + '만원' : '-';
+      const tags = String(r.keywords || '').split(/\s+/).filter(Boolean)
+        .map(function (k) { return '<span class="bid-kw">' + escapeHtml(k) + '</span>'; })
+        .join('');
+
+      row.innerHTML =
+        '<div class="ledger-row-main bid-cols">' +
+          '<div class="dday ' + ddayClass + '">' + ddayText + '</div>' +
+          '<div class="ledger-main-text">' +
+            '<div class="task-name">' + escapeHtml(r.name) + '</div>' +
+            '<div class="org-name">' + escapeHtml(r.noticeOrg || r.demandOrg || '') +
+              (r.kind ? ' · ' + escapeHtml(r.kind) : '') + '</div>' +
+          '</div>' +
+          '<div class="bid-kw-wrap">' + tags + '</div>' +
+          '<div class="ledger-amount">' + budgetText + '</div>' +
+          '<div class="expand-caret">▶</div>' +
+        '</div>' +
+        '<div class="ledger-detail">' +
+          '<div class="detail-grid">' +
+            '<div><b>공고번호</b>' + escapeHtml(r.no + (r.ord ? '-' + r.ord : '')) + '</div>' +
+            '<div><b>수요기관</b>' + escapeHtml(r.demandOrg || '-') + '</div>' +
+            '<div><b>계약방법</b>' + escapeHtml(r.method || '-') + '</div>' +
+            '<div><b>입찰방식</b>' + escapeHtml(r.bidMethod || '-') + '</div>' +
+            '<div><b>공고일시</b>' + escapeHtml(r.noticeDt || '-') + '</div>' +
+            '<div><b>마감일시</b>' + escapeHtml(r.closeDt || '-') + '</div>' +
+            '<div><b>개찰일시</b>' + escapeHtml(r.openDt || '-') + '</div>' +
+            '<div><b>추정가격</b>' + (r.estimate ? Math.round(r.estimate / 10000).toLocaleString() + '만원' : '-') + '</div>' +
+          '</div>' +
+          (r.url
+            ? '<a class="bid-link" href="' + escapeHtml(r.url) + '" target="_blank" rel="noopener">나라장터에서 공고 원문 보기 →</a>'
+            : '') +
         '</div>';
 
       row.querySelector('.ledger-row-main').addEventListener('click', function () {

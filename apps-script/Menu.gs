@@ -27,6 +27,18 @@ function onOpen() {
     .addItem('인력현황 데이터 파싱 점검', 'debugHRData')
     .addToUi();
 
+  ui.createMenu('입찰공고')
+    .addItem('지금 수집 실행', 'collectBidsManual')
+    .addSeparator()
+    .addItem('설정 (인증키/키워드)', 'showBidSettings')
+    .addItem('현재 설정 확인', 'checkBidSettings')
+    .addItem('API 연결 테스트', 'testBidApi')
+    .addItem('수집 데이터 파싱 점검', 'debugBidData')
+    .addSeparator()
+    .addItem('트리거 확인', 'showBidTriggers')
+    .addItem('트리거 등록/재등록', 'setupBidTrigger')
+    .addToUi();
+
   ui.createMenu('생일메일')
     .addItem('오늘 발송 대상 미리보기 (실제 발송 안 함)', 'showBirthdayPreview')
     .addSeparator()
