@@ -42,6 +42,7 @@ function onOpen() {
     .addItem('API 연결 테스트', 'testBidApi')
     .addItem('수집 데이터 파싱 점검', 'debugBidData')
     .addItem('실적 매칭 시험', 'testBidMatching')
+    .addItem('공고문 본문 추출 시험', 'testBidBrief')
     .addItem('마감일시 필드 진단', 'debugBidRaw')
     .addSeparator()
     .addItem('트리거 확인', 'showBidTriggers')
