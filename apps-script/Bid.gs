@@ -702,6 +702,35 @@ function classifyAttachment_(fileName) {
 }
 
 /**
+ * zip 첨부를 풀어서 같은 폴더의 하위 폴더에 저장한다.
+ * 제출서식이 zip 안에 묶여 오는 경우가 많다.
+ *
+ * ※ 한글 파일명이 CP949 로 인코딩된 zip 은 이름이 깨질 수 있다.
+ *    내용은 멀쩡하므로 저장은 하되, 깨진 건 사람이 열어보고 판단하면 된다.
+ */
+function unzipInto_(zipBlob, parentFolder, zipName) {
+  var lines = [];
+  try {
+    var inner = Utilities.unzip(zipBlob.setContentType('application/zip'));
+    if (!inner.length) return ['      (압축 안이 비어 있음)'];
+
+    var sub = parentFolder.createFolder(zipName.replace(/\.zip$/i, '') + '_압축해제');
+    inner.forEach(function (b) {
+      var name = b.getName() || '이름없음';
+      // zip 내부 경로가 붙어 오면 파일명만 남긴다
+      name = name.replace(/^.*[\/\\]/, '');
+      if (!name) return;
+      sub.createFile(b.setName(name));
+      var cls = classifyAttachment_(name);
+      lines.push('      ↳ ' + cls.note + '  ' + name);
+    });
+  } catch (e) {
+    lines.push('      ↳ 압축 해제 실패 — ' + (e.message || e));
+  }
+  return lines;
+}
+
+/**
  * 메뉴: 공고 첨부파일 받기
  * 공고번호를 입력받아 규격서·제안요청서·제출서식을 드라이브에 저장한다.
  */
@@ -746,16 +775,23 @@ function fetchBidAttachments() {
         if (resp.getResponseCode() !== 200) throw new Error('HTTP ' + resp.getResponseCode());
         var blob = resp.getBlob().setName(d.name);
         folder.createFile(blob);
+
         var cls = classifyAttachment_(d.name);
         lines.push('  ' + cls.note + '  ' + d.name);
+
+        // 서식이 zip 안에 들어 있는 경우가 많아 풀어서 함께 저장한다
+        if (cls.ext === 'zip') {
+          lines = lines.concat(unzipInto_(blob, folder, d.name));
+        }
       } catch (e) {
         failed.push('  ✗ ' + d.name + ' — ' + (e.message || e));
       }
     });
 
     ui.alert(
-      '첨부 ' + lines.length + '/' + docs.length + '건 저장 완료\n\n' +
+      '첨부 ' + docs.length + '건 저장 완료\n\n' +
       '공고명: ' + pick_(item, ['bidNtceNm']).slice(0, 60) + '\n' +
+      '계약방법: ' + (pick_(item, ['cntrctCnclsMthdNm']) || '(없음)') + '\n' +
       '저장 위치: ' + parent.getName() + ' / ' + folder.getName() + '\n\n' +
       lines.join('\n') +
       (failed.length ? '\n\n실패:\n' + failed.join('\n') : '') +
