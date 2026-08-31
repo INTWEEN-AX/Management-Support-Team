@@ -316,41 +316,37 @@
         <header class="propose-header">
           <h2 id="propose-bid-name">–</h2>
           <div class="propose-meta" id="propose-bid-meta"></div>
+          <div class="field-verdict" id="field-verdict"></div>
         </header>
-
-        <!-- 상태 문구와 버튼은 JavaScript.html 의 setBriefStatus() 가 채운다 -->
-        <section class="brief-bar loading" id="brief-bar">
-          <div class="brief-status" id="brief-status">공고 첨부를 확인하는 중…</div>
-        </section>
 
         <div class="propose-grid">
 
-          <!-- ─ 왼쪽: 공고문 원문 · 첨부 ─ -->
+          <!-- ─ 왼쪽: 필요 서식 · 공고문 ─ -->
           <div class="propose-col">
 
-            <section class="propose-section" id="attach-section" style="display:none">
+            <section class="propose-section">
               <div class="propose-head">
-                <h3>공고 첨부</h3>
-                <span class="propose-hint" id="attach-count"></span>
+                <h3>필요 서식</h3>
+                <span class="propose-hint" id="forms-count">확인하는 중…</span>
                 <a class="attach-folder" id="attach-folder" href="#" target="_blank" rel="noopener" style="display:none">폴더 열기 →</a>
               </div>
-              <div class="attach-list" id="attach-list"></div>
+              <div class="forms-list" id="forms-list">
+                <div class="empty-state">공고 첨부를 확인하는 중…</div>
+              </div>
+              <div class="forms-actions" id="forms-actions"></div>
             </section>
 
             <section class="propose-section" id="brief-section" style="display:none">
               <div class="propose-head">
                 <h3>공고문 본문</h3>
                 <span class="propose-hint" id="brief-meta"></span>
-                <label class="brief-toggle">
-                  <input type="checkbox" id="brief-highlight" checked> 근거 강조
-                </label>
               </div>
               <div class="brief-text" id="brief-text"></div>
             </section>
 
           </div>
 
-          <!-- ─ 오른쪽: 매칭 결과 · 선택 ─ -->
+          <!-- ─ 오른쪽: 실적 · 인력 ─ -->
           <div class="propose-col">
 
             <section class="propose-section">
@@ -383,11 +379,10 @@
         <div class="propose-actions">
           <button type="button" class="btn-ghost" id="copy-perf">실적표 복사</button>
           <button type="button" class="btn-ghost" id="copy-hr">인력표 복사</button>
-          <button type="button" class="btn-primary" id="copy-all">전체 복사</button>
+          <button type="button" class="btn-primary" id="fill-forms">서식 생성</button>
         </div>
       </div>
     </div>
-
 
     <!-- ============ 입찰서류 ============ -->
     <div class="panel" id="panel-documents" style="display:none">

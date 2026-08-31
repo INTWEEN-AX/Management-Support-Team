@@ -1209,6 +1209,166 @@
     padding: 0 1px;
   }
 
+  /* 분야 판정 결과 */
+  .field-verdict {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+    font-size: var(--fs-p);
+  }
+  .verdict-label {
+    font-size: var(--fs-caption);
+    letter-spacing: .04em;
+    color: var(--grey-3);
+    text-transform: uppercase;
+  }
+  .verdict-field {
+    font-size: var(--fs-h4);
+    font-weight: var(--fw-bold);
+    color: var(--primary-1);
+    padding: 3px 12px;
+    background: var(--primary-5);
+    border: 1px solid var(--primary-6);
+    border-radius: var(--br-pill);
+  }
+  .verdict-alt { color: var(--grey-2); }
+  .verdict-none { color: var(--grey-2); }
+
+  /* 필요 서식 목록 */
+  .forms-list {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .form-row {
+    display: grid;
+    grid-template-columns: 68px 1fr auto;
+    gap: 12px;
+    align-items: start;
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .form-row:last-child { border-bottom: none; }
+  .form-row.fillable { background: var(--primary-5); }
+
+  .form-kind {
+    font-size: var(--fs-caption);
+    line-height: 20px;
+    text-align: center;
+    border-radius: 2px;
+    border: 1px solid var(--border);
+    color: var(--grey-2);
+    background: var(--background);
+  }
+  .form-row.kind-perf .form-kind,
+  .form-row.kind-hr .form-kind,
+  .form-row.kind-company .form-kind {
+    color: var(--primary-1);
+    border-color: var(--primary-6);
+  }
+  .form-row.kind-holding .form-kind { color: var(--amber-1); border-color: var(--amber-2); }
+  .form-row.kind-writing .form-kind { color: var(--grey-2); }
+
+  .form-main { min-width: 0; }
+  .form-name {
+    display: block;
+    font-size: var(--fs-h4);
+    font-weight: var(--fw-medium);
+    color: var(--primary-black);
+    line-height: 1.4;
+    word-break: break-all;
+  }
+  .form-name a { color: inherit; text-decoration: none; }
+  .form-name a:hover { text-decoration: underline; }
+  .from-brief {
+    margin-left: 8px;
+    font-size: var(--fs-caption);
+    line-height: 18px;
+    padding: 0 6px;
+    color: var(--grey-2);
+    background: var(--grey-5);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    vertical-align: middle;
+  }
+  .form-reason {
+    display: block;
+    margin-top: 3px;
+    font-size: var(--fs-p);
+    color: var(--grey-2);
+  }
+  .form-flag {
+    font-size: var(--fs-caption);
+    white-space: nowrap;
+    color: var(--grey-3);
+  }
+  .form-row.fillable .form-flag {
+    color: var(--primary-1);
+    font-weight: var(--fw-bold);
+  }
+
+  .forms-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+  }
+  .forms-actions .btn-primary,
+  .forms-actions .btn-ghost { text-decoration: none; }
+
+  .convert-note {
+    width: 100%;
+    padding: 12px 14px;
+    background: var(--amber-5);
+    border: 1px solid var(--amber-2);
+    border-radius: var(--br-card-small);
+    font-size: var(--fs-p);
+    line-height: 1.7;
+    color: var(--grey-1);
+  }
+
+  /* 생성 결과 */
+  .gen-result {
+    padding: 16px 18px;
+    background: var(--primary-5);
+    border-bottom: 1px solid var(--primary-6);
+  }
+  .gen-title {
+    font-size: var(--fs-h4);
+    font-weight: var(--fw-bold);
+    color: var(--primary-1);
+    margin-bottom: 10px;
+  }
+  .gen-row {
+    padding: 10px 0;
+    border-top: 1px solid var(--primary-6);
+  }
+  .gen-name {
+    font-size: var(--fs-p);
+    font-weight: var(--fw-medium);
+    color: var(--primary-black);
+    word-break: break-all;
+  }
+  .gen-meta {
+    margin-top: 2px;
+    font-size: var(--fs-caption);
+    color: var(--grey-2);
+  }
+  .gen-warn {
+    margin-top: 6px;
+    font-size: var(--fs-caption);
+    line-height: 1.6;
+    color: var(--doc-imminent);
+  }
+  .gen-links {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .gen-links a { text-decoration: none; height: 30px; padding: 0 14px; }
+
   /* 읽을 수 없는 형식이라 매칭을 멈췄을 때 */
   .block-card {
     padding: 22px 24px;

@@ -1106,25 +1106,27 @@
 
   // ================= 제안자료 만들기 =================
 
-  let proposeMatches = [];          // [{record, scorePct, hits, sameOrg}]
   let proposeBid = null;            // 지금 열려 있는 공고
-  let proposeGen = 0;               // 모달 세대 — 늦게 도착한 응답을 버리기 위한 것
-  let briefText = '';               // 추출된 공고문 원문
-  let briefHits = [];               // 화면에 강조할 근거 구절
+  let proposeGen = 0;               // 늦게 도착한 응답을 버리기 위한 세대 번호
+  let proposeMatches = [];          // [{record, scorePct, hits, sameOrg, tier}]
+  let proposeForms = [];            // 필요 서식 목록
   const selectedPerf = new Set();   // 실적 인덱스
   const selectedHR = new Set();     // 인력 이름
 
   function openPropose(bid) {
     proposeBid = bid;
-    proposeGen++;                 // 이전 공고의 늦은 응답을 무시하기 위한 세대 번호
-    briefText = '';
+    proposeGen++;
+    proposeMatches = [];
+    proposeForms = [];
+    selectedPerf.clear();
+    selectedHR.clear();
 
     switchTab('propose');
-    setBriefStatus('공고명 기준 결과입니다. 첨부를 확인하는 중…', 'loading');
 
     document.getElementById('propose-bid-name').textContent = bid.name;
     document.getElementById('propose-bid-meta').textContent =
-      [bid.noticeOrg, bid.demandOrg && bid.demandOrg !== bid.noticeOrg ? '수요 ' + bid.demandOrg : '',
+      [bid.noticeOrg,
+       bid.demandOrg && bid.demandOrg !== bid.noticeOrg ? '수요 ' + bid.demandOrg : '',
        bid.kind, bid.method,
        bid.budget ? '예산 ' + Math.round(bid.budget / 10000).toLocaleString() + '만원' : '',
        bid.closeDt ? '마감 ' + bid.closeDt : '']
@@ -1134,188 +1136,27 @@
     if (bid.url) { src.href = bid.url; src.style.display = ''; }
     else { src.style.display = 'none'; }
 
+    document.getElementById('field-verdict').innerHTML = '';
     document.getElementById('brief-section').style.display = 'none';
-
-    selectedPerf.clear();
-    selectedHR.clear();
-    proposeMatches = [];
-
     document.getElementById('propose-perf-list').innerHTML =
-      '<div class="empty-state">공고 첨부를 확인하는 중…</div>';
+      '<div class="empty-state">유사 실적을 찾는 중…</div>';
     document.getElementById('propose-perf-count').textContent = '';
+    document.getElementById('forms-list').innerHTML =
+      '<div class="empty-state">공고 첨부를 확인하는 중…</div>';
+    document.getElementById('forms-count').textContent = '확인하는 중…';
+    document.getElementById('forms-actions').innerHTML = '';
+
     renderProposeHR();
     renderProposeSelected();
 
-    // 매칭은 공고문을 읽은 뒤에만 한다.
-    // 공고명만으로 낸 결과는 근거가 약해 오히려 오판을 부른다.
-    document.getElementById('attach-section').style.display = 'none';
-    loadAttachmentInfo();
-  }
-
-  /**
-   * 공고 첨부 목록을 받아 화면에 뿌리고, 읽을 수 있으면 본문 추출로 넘어간다.
-   * @param {boolean} listOnly 목록만 갱신 (다시 분석 직후처럼 본문이 이미 있을 때)
-   */
-  function loadAttachmentInfo(listOnly) {
-    const gen = proposeGen;
-    const bid = proposeBid;
-
+    // 실적 매칭은 공고명(분야 판정)만으로 되므로 즉시 실행된다
     google.script.run
-      .withSuccessHandler(function (info) {
-        if (gen !== proposeGen) return;
-        renderAttachments(info);
-        if (listOnly) return;
+      .withSuccessHandler(onMatchesLoaded)
+      .withFailureHandler(onMatchFail)
+      .getBidMatches(bid.no, bid.ord);
 
-        if (info.hasReadable) {
-          setBriefStatus('공고문을 읽는 중… (처음 한 번은 시간이 걸립니다)', 'loading');
-          loadBriefInBackground();
-          return;
-        }
-
-        // 첨부가 아예 없으면 읽을 공고문 자체가 없다 — 공고명으로라도 돌린다
-        if (!info.files.length) {
-          setBriefStatus('이 공고에는 첨부파일이 없습니다. 공고명만으로 찾은 결과라 근거가 약합니다.',
-            'failed');
-          google.script.run.withSuccessHandler(onMatchesLoaded)
-            .withFailureHandler(onMatchFail)
-            .getBidMatches(bid.no, bid.ord);
-          return;
-        }
-
-        // 파일은 있는데 못 읽는 경우 — 매칭을 하지 않고 변환을 요구한다
-        blockUntilReadable(info);
-      })
-      .withFailureHandler(function (err) {
-        if (gen !== proposeGen) return;
-        renderAttachments({ files: [], error: String(err.message || err) });
-        setBriefStatus('첨부를 확인하지 못했습니다.', 'failed',
-          { label: '다시 시도', onClick: function () { loadAttachmentInfo(); } });
-        document.getElementById('propose-perf-list').innerHTML =
-          '<div class="empty-state">첨부를 확인하지 못해 매칭을 진행하지 않았습니다.</div>';
-      })
-      .getBidAttachmentInfo(bid.no, bid.ord);
-  }
-
-  /**
-   * 읽을 수 있는 첨부가 없으면 매칭을 아예 하지 않는다.
-   *
-   * 공고명만으로 낸 결과는 '서울특별시' 같은 흔한 말에 걸려 엉뚱한 실적을
-   * 위로 올린다. 그럴듯한 오답을 보여주는 건 아무것도 안 보여주는 것보다 나쁘다.
-   * 변환해서 올리기 전까지 멈춘다.
-   */
-  function blockUntilReadable(info) {
-    document.getElementById('brief-section').style.display = 'none';
-    document.getElementById('propose-perf-count').textContent = '';
-    proposeMatches = [];
-    selectedPerf.clear();
-    renderProposeSelected();
-
-    const hwps = info.files.filter(function (f) { return f.ext === 'hwp'; });
-    setBriefStatus('공고문을 읽을 수 없어 매칭을 진행하지 않았습니다.', 'blocked');
-
-    const list = document.getElementById('propose-perf-list');
-    list.innerHTML =
-      '<div class="block-card">' +
-        '<div class="block-title">공고문을 읽을 수 있는 형식으로 올려주세요</div>' +
-        '<p class="block-desc">' +
-          (hwps.length
-            ? '이 공고의 첨부는 구형 <b>.hwp</b>라 프로그램이 내용을 읽을 수 없습니다. ' +
-              '공고명만으로 실적을 추천하면 엉뚱한 결과가 나오므로 여기서 멈췄습니다.'
-            : '읽을 수 있는 첨부(<b>.hwpx</b> 또는 <b>.pdf</b>)가 없어 매칭을 진행하지 않았습니다.') +
-        '</p>' +
-        (hwps.length
-          ? '<div class="block-files">' + hwps.map(function (f) {
-              return '<span class="block-file">' + escapeHtml(f.name) + '</span>';
-            }).join('') + '</div>'
-          : '') +
-        '<ol class="convert-steps">' +
-          '<li>아래 <b>' + (info.downloaded ? '폴더 열기' : '첨부 내려받기') + '</b>를 누릅니다</li>' +
-          '<li>내려받은 <b>.hwp</b>를 한컴오피스에서 엽니다</li>' +
-          '<li><b>다른 이름으로 저장 → 파일 형식 <code>.hwpx</code></b></li>' +
-          '<li>저장한 파일을 <b>같은 폴더에 업로드</b>합니다</li>' +
-          '<li><b>다시 분석</b>을 누릅니다</li>' +
-        '</ol>' +
-        '<div class="block-actions" id="block-actions"></div>' +
-      '</div>';
-
-    const actions = document.getElementById('block-actions');
-    if (!info.downloaded) {
-      addAction(actions, 'btn-primary', '첨부 내려받기', downloadAttachments);
-    } else {
-      if (info.folderUrl) {
-        const a = document.createElement('a');
-        a.className = 'btn-primary';
-        a.href = info.folderUrl;
-        a.target = '_blank';
-        a.rel = 'noopener';
-        a.textContent = '폴더 열기';
-        actions.appendChild(a);
-      }
-      addAction(actions, 'btn-ghost', '다시 분석', reanalyze);
-    }
-  }
-
-  function downloadAttachments() {
-    const gen = proposeGen;
-    const bid = proposeBid;
-    setBriefStatus('첨부를 드라이브로 내려받는 중…', 'loading');
-
-    google.script.run
-      .withSuccessHandler(function (info) {
-        if (gen !== proposeGen) return;
-        renderAttachments(info);
-        if (info.hasReadable) {
-          setBriefStatus('공고문을 읽는 중…', 'loading');
-          loadBriefInBackground();
-        } else {
-          blockUntilReadable(info);
-        }
-      })
-      .withFailureHandler(function (err) {
-        if (gen !== proposeGen) return;
-        setBriefStatus('첨부 내려받기 실패 — ' + String(err.message || err).split('\n')[0],
-          'failed', { label: '다시 시도', onClick: downloadAttachments });
-      })
-      .downloadBidAttachments(bid.no, bid.ord);
-  }
-
-  const ATTACH_ICON = { hwpx: '◆', pdf: '▣', hwp: '◇', zip: '▤' };
-
-  function renderAttachments(info) {
-    const section = document.getElementById('attach-section');
-    const list = document.getElementById('attach-list');
-    const folder = document.getElementById('attach-folder');
-    const files = (info && info.files) || [];
-
-    section.style.display = '';
-    document.getElementById('attach-count').textContent =
-      files.length ? files.length + '건' + (info.downloaded ? ' · 드라이브에 저장됨' : '') : '';
-
-    if (info && info.folderUrl) {
-      folder.href = info.folderUrl;
-      folder.style.display = '';
-    } else {
-      folder.style.display = 'none';
-    }
-
-    if (!files.length) {
-      list.innerHTML = '<div class="attach-empty">' +
-        escapeHtml(info && info.error ? info.error : '첨부파일이 없습니다.') + '</div>';
-      return;
-    }
-
-    list.innerHTML = files.map(function (f) {
-      const cls = f.excluded ? 'excluded' : (f.readable ? 'readable' : 'unreadable');
-      const icon = ATTACH_ICON[f.ext] || '▪';
-      const name = f.url
-        ? '<a href="' + escapeHtml(f.url) + '" target="_blank" rel="noopener">' + escapeHtml(f.name) + '</a>'
-        : escapeHtml(f.name);
-      return '<div class="attach-row ' + cls + '">' +
-        '<span class="attach-icon">' + icon + '</span>' +
-        '<span class="attach-name">' + name + '</span>' +
-        '<span class="attach-note">' + escapeHtml(f.note) + '</span>' +
-      '</div>';
-    }).join('');
+    // 필요 서식 목록은 첨부·공고문을 읽어야 해서 뒤따라온다
+    loadRequiredForms();
   }
 
   function onMatchFail(err) {
@@ -1323,164 +1164,24 @@
       '<div class="empty-state">실적 매칭에 실패했습니다.<br>' + escapeHtml(err.message || err) + '</div>';
   }
 
-  /**
-   * 상단 안내줄.
-   * state: 'loading' | 'applied' | 'ready' | 'failed' | 'plain'
-   * action 이 있으면 버튼을 만든다.
-   */
-  function setBriefStatus(text, state, action) {
-    const bar = document.getElementById('brief-bar');
-    bar.className = 'brief-bar' + (state ? ' ' + state : '');
-    document.getElementById('brief-status').textContent = text;
-
-    const old = document.getElementById('brief-load');
-    if (old) old.remove();
-    if (!action) return;
-
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.id = 'brief-load';
-    btn.className = 'btn-ghost';
-    btn.textContent = action.label;
-    btn.addEventListener('click', action.onClick);
-    bar.appendChild(btn);
-  }
-
-  /**
-   * 공고 첨부(과업지시서 등)에서 본문을 읽어 다시 매칭한다.
-   * 모달을 열자마자 뒤에서 자동으로 돈다.
-   *
-   * 첫 실행은 첨부 다운로드 + PDF 변환까지 하느라 수십 초 걸리므로,
-   * 그동안 화면은 공고명 기준 결과를 보여준다.
-   * 사용자가 이미 실적을 골랐다면 목록을 마음대로 갈아치우지 않고 [적용]을 물어본다.
-   */
-  function loadBriefInBackground() {
-    if (!proposeBid) return;
-    const gen = proposeGen;
-    const bid = proposeBid;
-
-    google.script.run
-      .withSuccessHandler(function (res) {
-        if (gen !== proposeGen) return;       // 그새 다른 공고를 열었으면 버린다
-        const summary = '공고문 본문 반영 — ' + res.brief.chars.toLocaleString() +
-                        '자 · ' + res.brief.source;
-
-        showBrief(res);
-        setBriefStatus(summary, 'applied');
-        onMatchesLoaded(res);
-      })
-      .withFailureHandler(function (err) {
-        if (gen !== proposeGen) return;
-        const reason = String(err.message || err).split('\n')[0];
-        setBriefStatus('공고명 기준 결과 — ' + reason, 'failed',
-          { label: '다시 시도', onClick: function () {
-              setBriefStatus('공고문을 읽는 중…', 'loading');
-              loadBriefInBackground();
-            } });
-      })
-      .getBidBriefMatches(bid.no, bid.ord);
-  }
-
-
-  /** 공고문 원문을 화면에 띄운다 */
-  function showBrief(res) {
-    briefText = (res.brief && res.brief.text) || '';
-    briefHits = [];
-    (res.matches || []).forEach(function (m) {
-      (m.hits || []).forEach(function (h) {
-        if (briefHits.indexOf(h) === -1) briefHits.push(h);
-      });
-    });
-
-    document.getElementById('brief-section').style.display = briefText ? '' : 'none';
-    document.getElementById('brief-meta').textContent =
-      briefText ? res.brief.chars.toLocaleString() + '자 · ' + res.brief.source : '';
-    renderBriefText();
-  }
-
-  /** 근거 구절을 공고문 안에서 노랗게 칠한다 — 왜 이 실적이 뽑혔는지 눈으로 확인 */
-  function renderBriefText() {
-    const box = document.getElementById('brief-text');
-    if (!briefText) { box.innerHTML = ''; return; }
-
-    const on = document.getElementById('brief-highlight').checked;
-    if (!on || !briefHits.length) {
-      box.textContent = briefText;
-      return;
-    }
-
-    // 긴 구절부터 칠해야 짧은 게 먼저 먹고 들어가지 않는다
-    const terms = briefHits.slice().sort(function (a, b) { return b.length - a.length; })
-      .map(function (t) { return t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); });
-    const re = new RegExp('(' + terms.join('|') + ')', 'gi');
-
-    box.innerHTML = escapeHtml(briefText).replace(re, '<mark>$1</mark>');
-  }
-
-
-  function addAction(parent, cls, label, onClick) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = cls;
-    b.textContent = label;
-    b.addEventListener('click', onClick);
-    parent.appendChild(b);
-  }
-
-  /** hwpx 를 새로 올린 뒤 — 저장된 본문을 버리고 다시 추출한다 */
-  function reanalyze() {
-    const gen = proposeGen;
-    const bid = proposeBid;
-    setBriefStatus('올려주신 파일로 다시 분석하는 중…', 'loading');
-    document.getElementById('propose-perf-list').innerHTML =
-      '<div class="empty-state">공고문을 다시 읽는 중…</div>';
-    selectedPerf.clear();
-    renderProposeSelected();
-
-    google.script.run
-      .withSuccessHandler(function (res) {
-        if (gen !== proposeGen) return;
-        setBriefStatus('공고문 본문 반영 — ' + res.brief.chars.toLocaleString() +
-                       '자 · ' + res.brief.source, 'applied');
-        showBrief(res);
-        onMatchesLoaded(res);
-        loadAttachmentInfo(true);
-        toast('공고문을 반영했습니다.');
-      })
-      .withFailureHandler(function (err) {
-        if (gen !== proposeGen) return;
-        setBriefStatus('공고명 기준 — ' + String(err.message || err).split('\n')[0],
-          'failed', { label: '다시 시도', onClick: reanalyze });
-      })
-      .refreshBidBrief(bid.no, bid.ord);
-  }
-
   function onMatchesLoaded(res) {
     proposeMatches = (res && res.matches) || [];
-    const wrap = document.getElementById('propose-perf-list');
+    renderFieldVerdict(res && res.field);
 
+    const wrap = document.getElementById('propose-perf-list');
     if (!proposeMatches.length) {
-      wrap.innerHTML = '<div class="empty-state">유사한 실적을 찾지 못했습니다.<br>' +
-        '아래 인력만 선택해서 쓰시거나, 실적 DB를 확인해주세요.</div>';
+      wrap.innerHTML = '<div class="empty-state">해당 분야의 실적을 찾지 못했습니다.</div>';
       return;
     }
 
     document.getElementById('propose-perf-count').textContent =
-      '점수순 ' + proposeMatches.length + '건 — 필요한 것만 고르세요';
+      proposeMatches.length + '건 — 제출할 것만 고르세요';
 
     wrap.innerHTML = proposeMatches.map(function (m, i) {
       const r = m.record;
       const amount = r.amount ? Math.round(r.amount / 10000).toLocaleString() + '만원' : '-';
       const hits = (m.hits || []).map(function (h) {
         return '<span class="hit">' + escapeHtml(h) + '</span>';
-      }).join('');
-
-      // 공고문의 어느 대목 때문에 걸렸는지 — 근거만으로는 판단이 안 된다
-      const contexts = (m.contexts || []).map(function (c) {
-        const safe = escapeHtml(c.text).replace(
-          new RegExp('(' + c.term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi'),
-          '<mark>$1</mark>');
-        return '<span class="pick-ctx">' + safe + '</span>';
       }).join('');
 
       return '<label class="pick-row">' +
@@ -1490,9 +1191,8 @@
           '<span class="pick-title">' + escapeHtml(r.taskName) +
             (m.sameOrg ? '<span class="same-org">같은 발주처</span>' : '') + '</span>' +
           '<span class="pick-sub">' + escapeHtml(r.year || '') + ' · ' +
-            escapeHtml(r.org || '') + ' · ' + amount + '</span>' +
+            escapeHtml(r.field || '') + ' · ' + escapeHtml(r.org || '') + ' · ' + amount + '</span>' +
           (hits ? '<span class="pick-hits">' + hits + '</span>' : '') +
-          contexts +
         '</span>' +
       '</label>';
     }).join('');
@@ -1506,11 +1206,253 @@
     });
   }
 
+  /** 어떤 분야로 판정해서 이 실적들이 나왔는지 */
+  function renderFieldVerdict(field) {
+    const el = document.getElementById('field-verdict');
+    if (!field || !field.field) {
+      el.innerHTML = '<span class="verdict-none">분야를 판정하지 못해 전체 실적을 최신순으로 냅니다.</span>';
+      return;
+    }
+    el.innerHTML =
+      '<span class="verdict-label">판정 분야</span>' +
+      '<span class="verdict-field">' + escapeHtml(field.field) + '</span>' +
+      (field.hits || []).map(function (h) {
+        return '<span class="hit">' + escapeHtml(h) + '</span>';
+      }).join('') +
+      ((field.alternatives || []).length
+        ? '<span class="verdict-alt">함께 봄: ' + escapeHtml(field.alternatives.join(', ')) + '</span>'
+        : '');
+  }
+
+  // ── 필요 서식 ──
+
+  const FORM_KIND_ORDER = ['perf', 'hr', 'company', 'holding', 'writing', 'unknown'];
+
+  function loadRequiredForms() {
+    const gen = proposeGen;
+    const bid = proposeBid;
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (gen !== proposeGen) return;
+        proposeForms = res.items || [];
+        renderForms(res);
+      })
+      .withFailureHandler(function (err) {
+        if (gen !== proposeGen) return;
+        document.getElementById('forms-count').textContent = '';
+        document.getElementById('forms-list').innerHTML =
+          '<div class="empty-state">서식 목록을 불러오지 못했습니다.<br>' +
+          escapeHtml(err.message || err) + '</div>';
+        renderFormsActions({ downloaded: false });
+      })
+      .getRequiredForms(bid.no, bid.ord);
+  }
+
+  function renderForms(res) {
+    const list = document.getElementById('forms-list');
+    const items = res.items || [];
+
+    const folder = document.getElementById('attach-folder');
+    if (res.folderUrl) { folder.href = res.folderUrl; folder.style.display = ''; }
+    else { folder.style.display = 'none'; }
+
+    const fillable = items.filter(function (i) { return i.fillable; }).length;
+    document.getElementById('forms-count').textContent =
+      items.length ? items.length + '건 · 생성 가능 ' + fillable + '건' : '';
+
+    if (!items.length) {
+      list.innerHTML = '<div class="empty-state">첨부에서 서식을 찾지 못했습니다.<br>' +
+        '아래에서 첨부를 내려받아 확인해보세요.</div>';
+      renderFormsActions(res);
+      return;
+    }
+
+    items.sort(function (a, b) {
+      return FORM_KIND_ORDER.indexOf(a.kind) - FORM_KIND_ORDER.indexOf(b.kind);
+    });
+
+    list.innerHTML = items.map(function (f, i) {
+      const name = f.url
+        ? '<a href="' + escapeHtml(f.url) + '" target="_blank" rel="noopener">' + escapeHtml(f.name) + '</a>'
+        : escapeHtml(f.name);
+      return '<div class="form-row kind-' + f.kind + (f.fillable ? ' fillable' : '') + '">' +
+        '<span class="form-kind">' + escapeHtml(f.kindLabel) + '</span>' +
+        '<span class="form-main">' +
+          '<span class="form-name">' + name +
+            (f.from === 'brief' ? '<span class="from-brief">공고문 언급</span>' : '') + '</span>' +
+          '<span class="form-reason">' + escapeHtml(f.reason) + '</span>' +
+        '</span>' +
+        '<span class="form-flag">' + (f.fillable ? '생성 가능' : '—') + '</span>' +
+      '</div>';
+    }).join('');
+
+    renderFormsActions(res);
+  }
+
+  function renderFormsActions(res) {
+    const box = document.getElementById('forms-actions');
+    box.innerHTML = '';
+
+    if (!res.downloaded) {
+      addAction(box, 'btn-primary', '첨부 내려받기', downloadAttachments);
+      return;
+    }
+    if (res.folderUrl) {
+      const a = document.createElement('a');
+      a.className = 'btn-ghost';
+      a.href = res.folderUrl;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.textContent = '폴더 열기';
+      box.appendChild(a);
+    }
+    addAction(box, 'btn-ghost', '다시 확인', loadRequiredForms);
+
+    // hwp 만 있으면 변환을 요청한다 — hwpx 가 아니면 채울 수 없다
+    const hwps = (res.items || []).filter(function (f) {
+      return f.ext === 'hwp' && ['perf', 'hr', 'company'].indexOf(f.kind) > -1;
+    });
+    if (hwps.length) {
+      const note = document.createElement('div');
+      note.className = 'convert-note';
+      note.innerHTML =
+        '<b>채울 수 있는 서식이 .hwp 로 되어 있습니다.</b><br>' +
+        '한컴오피스에서 <b>다른 이름으로 저장 → .hwpx</b> 로 바꿔 같은 폴더에 올린 뒤 ' +
+        '<b>다시 확인</b>을 눌러주세요.' +
+        '<div class="block-files">' + hwps.map(function (f) {
+          return '<span class="block-file">' + escapeHtml(f.name) + '</span>';
+        }).join('') + '</div>';
+      box.appendChild(note);
+    }
+  }
+
+  function addAction(parent, cls, label, onClick) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = cls;
+    b.textContent = label;
+    b.addEventListener('click', onClick);
+    parent.appendChild(b);
+  }
+
+  function downloadAttachments() {
+    const gen = proposeGen;
+    const bid = proposeBid;
+    document.getElementById('forms-list').innerHTML =
+      '<div class="empty-state">첨부를 드라이브로 내려받는 중…</div>';
+    document.getElementById('forms-actions').innerHTML = '';
+
+    google.script.run
+      .withSuccessHandler(function () {
+        if (gen !== proposeGen) return;
+        loadRequiredForms();
+      })
+      .withFailureHandler(function (err) {
+        if (gen !== proposeGen) return;
+        document.getElementById('forms-list').innerHTML =
+          '<div class="empty-state">첨부를 내려받지 못했습니다.<br>' +
+          escapeHtml(err.message || err) + '</div>';
+      })
+      .downloadBidAttachments(bid.no, bid.ord);
+  }
+
+  // ── 서식 생성 ──
+
+  function generateForms() {
+    const targets = proposeForms.filter(function (f) { return f.fillable && f.fileId; });
+    if (!targets.length) {
+      toast('채울 수 있는 hwpx 서식이 없습니다. hwp를 hwpx로 바꿔 올려주세요.');
+      return;
+    }
+    if (!selectedPerf.size && !selectedHR.size) {
+      toast('실적이나 인력을 먼저 선택해주세요.');
+      return;
+    }
+
+    const selection = {
+      perfKeys: Array.from(selectedPerf).map(function (i) {
+        const r = proposeMatches[i].record;
+        return String(r.taskName || '').replace(/\s+/g, '') + '|' + (r.year || '');
+      }),
+      hrNames: Array.from(selectedHR)
+    };
+
+    const btn = document.getElementById('fill-forms');
+    btn.disabled = true;
+    btn.textContent = '생성 중…';
+
+    const results = [];
+    let done = 0;
+
+    targets.forEach(function (f) {
+      google.script.run
+        .withSuccessHandler(function (out) {
+          results.push({ ok: true, form: f, out: out });
+          if (++done === targets.length) finishGenerate(results, btn);
+        })
+        .withFailureHandler(function (err) {
+          results.push({ ok: false, form: f, error: String(err.message || err) });
+          if (++done === targets.length) finishGenerate(results, btn);
+        })
+        .generateFilledForm(f.fileId, selection, proposeBid.no, proposeBid.ord);
+    });
+  }
+
+  function finishGenerate(results, btn) {
+    btn.disabled = false;
+    btn.textContent = '서식 생성';
+
+    const ok = results.filter(function (r) { return r.ok; });
+    const fail = results.filter(function (r) { return !r.ok; });
+
+    const html =
+      '<div class="gen-result">' +
+        '<div class="gen-title">서식 ' + ok.length + '건 생성' +
+          (fail.length ? ' · ' + fail.length + '건 실패' : '') + '</div>' +
+        ok.map(function (r) {
+          const rep = r.out.report || {};
+          const bits = [];
+          if (rep.perf) bits.push('실적 ' + rep.perf + '행');
+          if (rep.hr) bits.push('인력 ' + rep.hr + '행');
+          if (rep.company) bits.push('회사정보 ' + rep.company + '칸');
+          const over = (rep.overflow || []).map(function (o) {
+            return '⚠ ' + (o.kind === 'perf' ? '실적' : '인력') +
+                   ' ' + o.total + '건 중 ' + o.filled + '건만 들어갔습니다 (표에 빈 행 부족)';
+          }).join('<br>');
+          return '<div class="gen-row">' +
+            '<div class="gen-name">' + escapeHtml(r.out.name) + '</div>' +
+            '<div class="gen-meta">' + (bits.join(' · ') || '채워진 칸 없음') + '</div>' +
+            (over ? '<div class="gen-warn">' + over + '</div>' : '') +
+            '<div class="gen-links">' +
+              '<a class="btn-ghost" href="' + escapeHtml(r.out.url) + '" target="_blank" rel="noopener">열기</a>' +
+              '<a class="btn-primary" href="' + escapeHtml(r.out.downloadUrl) + '" target="_blank" rel="noopener">내려받기</a>' +
+            '</div>' +
+          '</div>';
+        }).join('') +
+        fail.map(function (r) {
+          return '<div class="gen-row failed">' +
+            '<div class="gen-name">' + escapeHtml(r.form.name) + '</div>' +
+            '<div class="gen-warn">' + escapeHtml(r.error.split('\n')[0]) + '</div>' +
+          '</div>';
+        }).join('') +
+        (ok.length && ok[0].out.placeholders && ok[0].out.placeholders.length
+          ? '<div class="gen-warn">⚠ 회사정보 중 ' + ok[0].out.placeholders.join(', ') +
+            ' 은(는) 아직 더미 값입니다. 제출 전에 반드시 확인하세요.</div>'
+          : '') +
+      '</div>';
+
+    const list = document.getElementById('forms-list');
+    list.insertAdjacentHTML('afterbegin', html);
+    toast(ok.length ? '서식을 생성했습니다.' : '서식 생성에 실패했습니다.');
+  }
+
+  // ── 인력 ──
+
   function renderProposeHR() {
     const wrap = document.getElementById('propose-hr-list');
     const q = (document.getElementById('propose-hr-search').value || '').trim().toLowerCase();
 
-    // 재직자만, 부서·이름순
     const list = ALL_HR_RECORDS
       .filter(function (r) { return String(r.status || '').indexOf('재직') === 0; })
       .filter(function (r) {
@@ -1556,7 +1498,8 @@
       parts.length ? parts.join(' · ') + ' 선택됨' : '선택 없음';
   }
 
-  /** 선택된 실적 → 2차원 표 (머리글 포함) */
+  // ── 표 복사 ──
+
   function perfTable() {
     const head = ['연번', '과업명', '발주처', '계약금액(원)', '계약기간', '용역개요'];
     const rows = Array.from(selectedPerf).sort(function (a, b) { return a - b; })
@@ -1574,7 +1517,6 @@
     return [head].concat(rows);
   }
 
-  /** 선택된 인력 → 2차원 표 */
   function hrTable() {
     const head = ['연번', '성명', '소속', '직위', '최종학력', '전공', '경력기간', '입사일'];
     const rows = ALL_HR_RECORDS
@@ -1674,7 +1616,6 @@
   }
 
   function initProposeModal() {
-    document.getElementById('brief-highlight').addEventListener('change', renderBriefText);
     document.getElementById('propose-hr-search').addEventListener('input', renderProposeHR);
 
     document.getElementById('copy-perf').addEventListener('click', function () {
@@ -1685,12 +1626,6 @@
       if (!selectedHR.size) return toast('선택된 인력이 없습니다.');
       copyTables([{ title: '참여인력', rows: hrTable() }]);
     });
-    document.getElementById('copy-all').addEventListener('click', function () {
-      const blocks = [];
-      if (selectedPerf.size) blocks.push({ title: '수행실적', rows: perfTable() });
-      if (selectedHR.size) blocks.push({ title: '참여인력', rows: hrTable() });
-      if (!blocks.length) return toast('선택된 항목이 없습니다.');
-      copyTables(blocks);
-    });
+    document.getElementById('fill-forms').addEventListener('click', generateForms);
   }
 </script>
