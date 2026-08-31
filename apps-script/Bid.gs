@@ -41,7 +41,7 @@ var G2B_OPERATIONS = [
 // 설정 메뉴에서 바꿀 수 있고, 바꾸면 Script Properties 값이 우선한다.
 var BID_DEFAULT_KEYWORDS = [
   '행사', '축제', '박람회', '전시', '컨퍼런스', '콘퍼런스', '포럼', '세미나', '워크숍',
-  '국제회의', '페스티벌', 'MICE', '마이스', '운영대행', '기획운영', '대행용역',
+  '국제회의', '페스티벌', 'MICE', '마이스', '운영대행', '기획운영',
   '홍보', '마케팅', '캠페인', '브랜딩', '콘텐츠',
   '창업', '스타트업', '액셀러레이팅', '보육', '기업지원',
   '교육과정', '교육운영', '연수', '아카데미',
@@ -51,7 +51,9 @@ var BID_DEFAULT_KEYWORDS = [
 // 이름만 걸리고 실제로는 우리 일이 아닌 것들을 쳐낸다.
 var BID_DEFAULT_EXCLUDE = [
   '청소', '경비', '급식', '시설관리', '차량임차', '방역', '소독',
-  '건설', '토목', '전기공사', '통신공사', '설계용역', '감리'
+  '건설', '토목', '전기공사', '통신공사', '설계용역', '감리',
+  // 실제 수집 결과에서 걸러낸 오탐 유형
+  '방제', '수종전환', '산림', '제초', '폐기물', '유지보수', '정화조'
 ].join(',');
 
 var BID_LOOKBACK_DAYS = 2;   // 트리거가 한 번 걸러도 메우도록 이틀치를 본다
@@ -393,11 +395,19 @@ function fetchAllBidPages_(op, bgn, end) {
   return all;
 }
 
-/** 공고명에 걸린 키워드 목록 (없으면 빈 배열) */
+/**
+ * 공고명에 걸린 키워드 목록 (없으면 빈 배열).
+ *
+ * 공백을 지우고 비교하면 단어 경계를 넘어 오탐이 난다.
+ * 예) '수업용 방송시스템 구축 제안서' → 공백 제거 시 '구축제안서' 안의
+ *     '축제' 가 걸려 행사 공고로 잘못 분류됐다.
+ * 그래서 공백은 그대로 두고 대소문자만 맞춘다.
+ */
 function matchKeywords_(name, keywords) {
-  var hay = String(name).toUpperCase().replace(/\s+/g, '');
+  var hay = String(name).toUpperCase();
   return keywords.filter(function (k) {
-    return hay.indexOf(k.toUpperCase().replace(/\s+/g, '')) > -1;
+    var needle = String(k).toUpperCase().trim();
+    return needle && hay.indexOf(needle) > -1;
   });
 }
 
