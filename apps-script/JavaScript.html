@@ -10,11 +10,11 @@
   };
   const FIELD_ORDER = Object.keys(FIELD_COLORS);
 
-  // 차트 크롬 — Stylesheet.html 의 다크 토큰과 같은 값
+  // 차트 크롬 — Stylesheet.html 의 라이트 토큰과 같은 값
   const CHART_FONT = 'Pretendard';
-  const CHART_GRID = '#232B36';    // --line
-  const CHART_TICK = '#8A96A5';    // --muted
-  const CHART_SURFACE = '#12171F'; // --panel (조각 사이 간격용)
+  const CHART_GRID = '#E9E9E9';    // --grey-4
+  const CHART_TICK = '#555555';    // --grey-2
+  const CHART_SURFACE = '#FFFFFF'; // --background (조각 사이 간격용)
 
   let ALL_RECORDS = [];
   let activeFieldFilter = null; // clicking legend/composition toggles this
@@ -79,8 +79,10 @@
     document.querySelectorAll('.panel').forEach(function (p) { p.style.display = 'none'; });
     panel.style.display = '';
 
-    // 홈은 전체화면 포털이라 서브 헤더를 숨긴다
+    // 홈은 전체화면 포털이라 서브 헤더를 숨긴다.
+    // 서브 페이지에서는 body.subpage 로 배경 장식(메시/워시)을 걷어낸다.
     var isHome = (tab === 'home');
+    document.body.classList.toggle('subpage', !isHome);
     document.getElementById('subhead').style.display = isHome ? 'none' : '';
     document.getElementById('page-subtitle').textContent = isHome ? '' : (TAB_SUBTITLES[tab] || '');
     window.scrollTo(0, 0);
