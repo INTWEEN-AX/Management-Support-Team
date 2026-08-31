@@ -35,9 +35,12 @@
     performance: '제안서 작성 참고용 · 실적증빙리스트 연동',
     hr: '조직 구성 및 인사정보 조회 · 개인정보는 상세보기에서만 노출',
     bid: '나라장터 공고 자동 수집 · 매일 오전 갱신 · 투찰은 나라장터에서 직접',
+    documents: '입찰 행정서류 유효기간 관리 · D-day는 조회 시점 기준으로 재계산',
   };
 
   let ALL_BID_RECORDS = [];
+  let ALL_DOC_RECORDS = [];
+  let activeDocStatus = '';
 
   let ALL_HR_RECORDS = [];
   let activeHRDeptFilter = null;
@@ -58,6 +61,7 @@
     google.script.run.withSuccessHandler(onDataLoaded).withFailureHandler(onLoadError).getPerformanceData();
     google.script.run.withSuccessHandler(onHRDataLoaded).withFailureHandler(onHRLoadError).getHRData();
     google.script.run.withSuccessHandler(onBidDataLoaded).withFailureHandler(onBidLoadError).getBidData();
+    google.script.run.withSuccessHandler(onDocDataLoaded).withFailureHandler(onDocLoadError).getDocumentData();
   });
 
   let currentTab = 'home';
@@ -858,5 +862,194 @@
 
       wrap.appendChild(row);
     });
+  }
+
+  // ================= 입찰서류 =================
+
+  const DOC_STATUS_LABEL = {
+    expired:  '만료',
+    imminent: '임박',
+    normal:   '정상',
+    none:     '유효기간 없음',
+  };
+
+  function onDocLoadError(err) {
+    document.getElementById('doc-list').innerHTML =
+      '<div class="empty-state">입찰서류를 불러오지 못했습니다.<br>' + escapeHtml(err.message || err) + '</div>';
+    document.getElementById('doc-summary').innerHTML = '';
+  }
+
+  function onDocDataLoaded(records) {
+    if (!records || !Array.isArray(records)) {
+      onDocLoadError(new Error('서버 응답이 비어있습니다.'));
+      return;
+    }
+    ALL_DOC_RECORDS = records;
+
+    document.getElementById('doc-search-input').addEventListener('input', renderDocAll);
+
+    document.getElementById('doc-status-group').addEventListener('click', function (e) {
+      const btn = e.target.closest('.seg-btn');
+      if (!btn) return;
+      setDocStatusFilter(btn.dataset.status);
+    });
+
+    document.getElementById('doc-reset-btn').addEventListener('click', function () {
+      document.getElementById('doc-search-input').value = '';
+      setDocStatusFilter('');
+    });
+
+    renderDocAll();
+  }
+
+  function setDocStatusFilter(status) {
+    activeDocStatus = status || '';
+    document.querySelectorAll('#doc-status-group .seg-btn').forEach(function (b) {
+      b.classList.toggle('active', (b.dataset.status || '') === activeDocStatus);
+    });
+    renderDocAll();
+  }
+
+  function renderDocAll() {
+    const q = document.getElementById('doc-search-input').value.trim().toLowerCase();
+
+    const filtered = ALL_DOC_RECORDS.filter(function (r) {
+      if (activeDocStatus && r.status !== activeDocStatus) return false;
+      if (q) {
+        const hay = (r.name + ' ' + r.org + ' ' + r.note).toLowerCase();
+        if (hay.indexOf(q) === -1) return false;
+      }
+      return true;
+    });
+
+    renderDocSummary();
+    renderDocList(filtered);
+    document.getElementById('doc-result-count').textContent =
+      filtered.length + '건 / 전체 ' + ALL_DOC_RECORDS.length + '건';
+  }
+
+  /** 상단 요약 — 재발급이 필요한 건이 있을 때만 경고로 노출 */
+  function renderDocSummary() {
+    const wrap = document.getElementById('doc-summary');
+    const expired = ALL_DOC_RECORDS.filter(function (r) { return r.status === 'expired'; }).length;
+    const imminent = ALL_DOC_RECORDS.filter(function (r) { return r.status === 'imminent'; }).length;
+
+    if (!expired && !imminent) {
+      wrap.className = 'doc-summary ok';
+      wrap.innerHTML =
+        '<span class="doc-summary-icon">✓</span>' +
+        '<span class="doc-summary-text">재발급 필요 서류 없음</span>';
+      return;
+    }
+
+    wrap.className = 'doc-summary alert';
+    let chips = '';
+    if (expired) {
+      chips += '<button type="button" class="doc-chip expired" data-status="expired">' +
+               '만료 <b>' + expired + '</b>건</button>';
+    }
+    if (imminent) {
+      chips += '<button type="button" class="doc-chip imminent" data-status="imminent">' +
+               '임박 <b>' + imminent + '</b>건</button>';
+    }
+    wrap.innerHTML =
+      '<span class="doc-summary-icon">!</span>' +
+      '<span class="doc-summary-text">재발급이 필요한 서류가 있습니다</span>' +
+      '<span class="doc-chips">' + chips + '</span>';
+
+    wrap.querySelectorAll('.doc-chip').forEach(function (chip) {
+      chip.addEventListener('click', function () {
+        // 이미 그 상태로 보고 있으면 해제 (토글)
+        setDocStatusFilter(activeDocStatus === chip.dataset.status ? '' : chip.dataset.status);
+      });
+    });
+  }
+
+  function renderDocList(records) {
+    const wrap = document.getElementById('doc-list');
+    wrap.innerHTML = '';
+
+    if (!records.length) {
+      wrap.innerHTML = ALL_DOC_RECORDS.length
+        ? '<div class="empty-state">조건에 맞는 서류가 없습니다.</div>'
+        : '<div class="empty-state">등록된 서류가 없습니다.<br>' +
+          '경영기획실DB의 <b>입찰행정서류</b> 탭을 확인해주세요.</div>';
+      return;
+    }
+
+    // 임박 순 — 유효기간 없는 서류는 항상 맨 아래
+    const sorted = records.slice().sort(function (a, b) {
+      if (a.dday === null && b.dday === null) return a.name.localeCompare(b.name, 'ko');
+      if (a.dday === null) return 1;
+      if (b.dday === null) return -1;
+      return a.dday - b.dday;
+    });
+
+    sorted.forEach(function (r) {
+      const row = document.createElement('div');
+      row.className = 'ledger-row';
+
+      let ddayText;
+      if (r.dday === null)   ddayText = '–';
+      else if (r.dday < 0)   ddayText = '+' + (-r.dday);
+      else if (r.dday === 0) ddayText = 'D-DAY';
+      else                   ddayText = 'D-' + r.dday;
+
+      const checkMark = r.needsCheck
+        ? '<span class="doc-check" title="비고에 확인필요 표시가 있습니다">확인필요</span>'
+        : '';
+
+      row.innerHTML =
+        '<div class="ledger-row-main doc-cols">' +
+          '<div class="dday doc-' + r.status + '">' + ddayText + '</div>' +
+          '<div class="ledger-main-text">' +
+            '<div class="task-name">' + escapeHtml(r.name) + checkMark + '</div>' +
+            '<div class="org-name">' + escapeHtml(r.org || '발급기관 미기재') + '</div>' +
+          '</div>' +
+          '<div class="doc-expiry">' +
+            (r.expiryDate
+              ? '<b>' + escapeHtml(r.expiryDate) + '</b><span>까지</span>'
+              : '<span>유효기간 없음</span>') +
+          '</div>' +
+          '<div class="doc-badge doc-' + r.status + '">' + DOC_STATUS_LABEL[r.status] + '</div>' +
+          '<div class="expand-caret">▶</div>' +
+        '</div>' +
+        '<div class="ledger-detail">' +
+          '<div class="detail-grid">' +
+            '<div><b>발급기관</b>' + escapeHtml(r.org || '-') + '</div>' +
+            '<div><b>발급일</b>' + escapeHtml(r.issuedDate || '-') + '</div>' +
+            '<div><b>유효기간</b>' + escapeHtml(r.expiryDate || '없음') + '</div>' +
+            '<div><b>남은 기간</b>' + docRemainText(r) + '</div>' +
+          '</div>' +
+          (r.note ? '<div class="doc-note">' + escapeHtml(r.note) + '</div>' : '') +
+          (r.url
+            ? '<div class="doc-actions">' +
+                '<a class="bid-link" href="' + escapeHtml(r.url) + '" target="_blank" rel="noopener">문서 열기 →</a>' +
+                (r.fileId
+                  ? '<a class="doc-download" href="https://drive.google.com/uc?export=download&id=' +
+                    escapeHtml(r.fileId) + '" target="_blank" rel="noopener">내려받기</a>'
+                  : '') +
+              '</div>'
+            : '<div class="doc-note">드라이브 링크가 등록되어 있지 않습니다.</div>') +
+        '</div>';
+
+      row.querySelector('.ledger-row-main').addEventListener('click', function (e) {
+        // 서류명을 눌렀을 때는 상세를 여는 대신 파일을 새 탭으로 연다
+        if (e.target.closest('.task-name') && r.url) {
+          window.open(r.url, '_blank', 'noopener');
+          return;
+        }
+        row.classList.toggle('open');
+      });
+
+      wrap.appendChild(row);
+    });
+  }
+
+  function docRemainText(r) {
+    if (r.dday === null) return '-';
+    if (r.dday < 0) return '만료 ' + (-r.dday) + '일 지남';
+    if (r.dday === 0) return '오늘 만료';
+    return r.dday + '일';
   }
 </script>

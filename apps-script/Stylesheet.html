@@ -291,7 +291,7 @@
   /* ── 카드 그리드 ── */
   .portal-grid {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 16px;
     width: 100%;
   }
@@ -862,10 +862,198 @@
   .bid-link:hover { background: var(--primary-5); }
 
   /* ============================================================
+     입찰서류
+     ============================================================ */
+
+  /* 상태색 — 만료 빨강 / 임박 주황 / 정상 초록 / 없음 회색.
+     흰 바탕에서 본문 대비 4.5:1 을 넘도록 톤을 낮춘 값들이다. */
+  :root {
+    --doc-expired:  #C4322C;
+    --doc-imminent: #B45A15;
+    --doc-normal:   var(--primary-1);
+    --doc-none:     var(--grey-2);
+  }
+
+  .doc-summary {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    border-radius: var(--br-card);
+    border: 1px solid var(--border);
+    background: var(--grey-5);
+    margin-bottom: var(--sp-element);
+    font-size: var(--fs-h4);
+  }
+  .doc-summary.alert {
+    border-color: rgba(196, 50, 44, .35);
+    background: rgba(196, 50, 44, .06);
+  }
+  .doc-summary.ok {
+    border-color: var(--primary-6);
+    background: var(--primary-5);
+  }
+
+  .doc-summary-icon {
+    flex: none;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: var(--fw-bold);
+    color: var(--primary-white);
+  }
+  .doc-summary.alert .doc-summary-icon { background: var(--doc-expired); }
+  .doc-summary.ok .doc-summary-icon { background: var(--primary-1); }
+
+  .doc-summary-text {
+    font-weight: var(--fw-medium);
+    color: var(--primary-black);
+  }
+  .doc-summary.ok .doc-summary-text { color: var(--primary-1); }
+
+  .doc-chips {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+    flex-wrap: wrap;
+  }
+  .doc-chip {
+    font-family: inherit;
+    font-size: var(--fs-p);
+    padding: 5px 14px;
+    border-radius: var(--br-pill);
+    border: 1.2px solid currentColor;
+    background: var(--background);
+    cursor: pointer;
+    transition: background .15s ease;
+  }
+  .doc-chip b { font-weight: var(--fw-bold); }
+  .doc-chip.expired { color: var(--doc-expired); }
+  .doc-chip.imminent { color: var(--doc-imminent); }
+  .doc-chip:hover { background: var(--grey-5); }
+
+  /* 상태 필터 세그먼트 */
+  .seg-group {
+    display: inline-flex;
+    align-items: center;
+    height: 40px;
+    padding: 3px;
+    gap: 2px;
+    background: var(--grey-5);
+    border: 1px solid var(--border);
+    border-radius: var(--br-pill);
+  }
+  .seg-btn {
+    height: 32px;
+    padding: 0 14px;
+    border: none;
+    background: transparent;
+    border-radius: var(--br-pill);
+    font-size: var(--fs-p);
+    color: var(--grey-2);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background .15s ease, color .15s ease;
+  }
+  .seg-btn:hover { color: var(--primary-black); }
+  .seg-btn.active {
+    background: var(--background);
+    color: var(--primary-black);
+    font-weight: var(--fw-bold);
+    box-shadow: 0 1px 3px rgba(31, 36, 34, .12);
+  }
+
+  .ledger-row-main.doc-cols { grid-template-columns: 68px 1fr 150px 96px 24px; }
+
+  .dday.doc-expired  { color: var(--doc-expired);  border-color: var(--doc-expired); }
+  .dday.doc-imminent { color: var(--doc-imminent); border-color: var(--doc-imminent); background: var(--amber-5); }
+  .dday.doc-normal   { color: var(--doc-normal);   border-color: var(--primary-4); }
+  .dday.doc-none     { color: var(--doc-none);     border-color: var(--grey-4); background: var(--grey-5); }
+
+  .doc-expiry {
+    font-size: var(--fs-p);
+    text-align: right;
+    white-space: nowrap;
+    color: var(--grey-2);
+  }
+  .doc-expiry b {
+    font-family: var(--mono);
+    font-weight: var(--fw-regular);
+    color: var(--primary-black);
+    font-variant-numeric: tabular-nums;
+  }
+  .doc-expiry span { margin-left: 4px; }
+
+  .doc-badge {
+    font-size: var(--fs-p);
+    font-weight: var(--fw-bold);
+    text-align: center;
+    padding: 4px 0;
+    border-radius: 2px;
+    border: 1px solid currentColor;
+  }
+  .doc-badge.doc-expired  { color: var(--doc-expired); }
+  .doc-badge.doc-imminent { color: var(--doc-imminent); }
+  .doc-badge.doc-normal   { color: var(--doc-normal); }
+  .doc-badge.doc-none     { color: var(--doc-none); border-color: var(--grey-3); }
+
+  .doc-check {
+    display: inline-flex;
+    align-items: center;
+    font-size: var(--fs-caption);
+    line-height: 18px;
+    color: var(--doc-imminent);
+    border: 1px solid var(--amber-2);
+    background: var(--amber-5);
+    border-radius: 2px;
+    padding: 0 7px;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+
+  .ledger-main-text .task-name { cursor: inherit; }
+  .doc-cols .ledger-main-text .task-name:hover { text-decoration: underline; }
+
+  .doc-note {
+    margin-top: 12px;
+    padding: 10px 14px;
+    background: var(--grey-5);
+    border-radius: var(--br-card-small);
+    font-size: var(--fs-p);
+    line-height: 1.7;
+    color: var(--grey-2);
+  }
+
+  .doc-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .doc-download {
+    display: inline-flex;
+    align-items: center;
+    height: 34px;
+    margin-top: 14px;
+    padding: 0 16px;
+    font-size: var(--fs-button);
+    color: var(--grey-2);
+    background: var(--background);
+    border: 1.2px solid var(--border);
+    border-radius: var(--br-pill);
+    text-decoration: none;
+    transition: background .15s ease, border-color .15s ease;
+  }
+  .doc-download:hover { background: var(--grey-4); border-color: var(--border-active); }
+
+  /* ============================================================
      반응형
      ============================================================ */
   @media (max-width: 1100px) {
-    .portal-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .dashboard { grid-template-columns: 1fr 1fr; }
     .stat-stack { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; }
     .stat-stack .card { flex: 1 1 150px; }
@@ -886,12 +1074,19 @@
 
     .ledger-row-main,
     .ledger-row-main.hr-cols,
-    .ledger-row-main.bid-cols {
+    .ledger-row-main.bid-cols,
+    .ledger-row-main.doc-cols {
       display: flex;
       flex-wrap: wrap;
       align-items: flex-start;
       gap: 8px;
     }
+    .doc-expiry { order: 3; margin-left: auto; text-align: right; }
+    .doc-badge { order: 2; padding: 4px 10px; }
+    .doc-summary { flex-wrap: wrap; }
+    .doc-chips { margin-left: 0; width: 100%; }
+    .seg-group { width: 100%; overflow-x: auto; justify-content: flex-start; }
+    .filters .seg-group { order: 1; }
     .field-tag-bar { align-self: stretch; height: auto; margin-right: 4px; }
     .ledger-year { display: none; }
     .ledger-main-text { flex: 1 1 100%; order: 1; }

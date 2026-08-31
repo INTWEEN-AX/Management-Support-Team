@@ -27,6 +27,10 @@ function onOpen() {
     .addItem('인력현황 데이터 파싱 점검', 'debugHRData')
     .addToUi();
 
+  ui.createMenu('입찰서류')
+    .addItem('유효기간 점검', 'debugDocumentData')
+    .addToUi();
+
   ui.createMenu('입찰공고')
     .addItem('지금 수집 실행', 'collectBidsManual')
     .addSeparator()

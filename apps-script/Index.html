@@ -83,6 +83,13 @@
             <span class="card-desc">나라장터 공고 자동 수집 및 마감 임박 알림</span>
           </button>
 
+          <button type="button" class="portal-card" data-tab="documents" data-keywords="입찰서류 행정서류 증명서 유효기간 documents">
+            <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+            <span class="card-eyebrow">Bid Documents</span>
+            <span class="card-title">입찰서류</span>
+            <span class="card-desc">행정서류 유효기간 관리 및 재발급 알림</span>
+          </button>
+
           <button type="button" class="portal-card disabled" tabindex="-1" data-keywords="ai질의 질문 데이터 query">
             <span class="badge">준비중</span>
             <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3v3M12 18v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M3 12h3M18 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/><circle cx="12" cy="12" r="4"/></svg>
@@ -108,6 +115,7 @@
           <button type="button" class="tab-btn" data-tab="performance">실적검색</button>
           <button type="button" class="tab-btn" data-tab="hr">인력현황</button>
           <button type="button" class="tab-btn" data-tab="bid">입찰공고</button>
+          <button type="button" class="tab-btn" data-tab="documents">입찰서류</button>
         </div>
         <div class="updated">
           조회 시각<br>
@@ -286,6 +294,35 @@
           <div class="empty-state">데이터를 불러오는 중…</div>
         </div>
         <div class="privacy-note">나라장터(조달청) 공개 입찰공고를 설정된 키워드로 걸러 매일 자동 수집합니다. 실제 투찰은 나라장터에서 직접 진행해야 합니다.</div>
+
+      </div>
+    </div>
+
+    <!-- ============ 입찰서류 ============ -->
+    <div class="panel" id="panel-documents" style="display:none">
+      <div class="panel-body">
+
+        <!-- 재발급 필요 요약: 클릭하면 해당 상태만 필터링 -->
+        <div class="doc-summary" id="doc-summary"></div>
+
+        <div class="filters">
+          <input type="text" id="doc-search-input" placeholder="서류명 · 발급기관 검색">
+          <div class="seg-group" id="doc-status-group" role="group" aria-label="상태 필터">
+            <button type="button" class="seg-btn active" data-status="">전체</button>
+            <button type="button" class="seg-btn" data-status="normal">정상</button>
+            <button type="button" class="seg-btn" data-status="imminent">임박</button>
+            <button type="button" class="seg-btn" data-status="expired">만료</button>
+            <button type="button" class="seg-btn" data-status="none">유효기간 없음</button>
+          </div>
+          <button type="button" class="reset-btn" id="doc-reset-btn">필터 초기화</button>
+        </div>
+
+        <div class="result-count" id="doc-result-count"></div>
+
+        <div class="ledger" id="doc-list">
+          <div class="empty-state">데이터를 불러오는 중…</div>
+        </div>
+        <div class="privacy-note">D-day와 상태는 시트에 적힌 값이 아니라 <b>조회 시점의 오늘 날짜</b>를 기준으로 매번 다시 계산합니다. 서류 등록·수정은 경영기획실DB의 <b>입찰행정서류</b> 탭에서만 가능합니다.</div>
 
       </div>
     </div>
