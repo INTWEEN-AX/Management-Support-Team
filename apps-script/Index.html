@@ -304,7 +304,7 @@
       </div>
     </div>
 
-    <!-- ============ 제안자료 만들기 (입찰공고에서 넘어옴) ============ -->
+    <!-- ============ 제안서 쓰기 (입찰공고에서 넘어옴) ============ -->
     <div class="panel" id="panel-propose" style="display:none">
       <div class="panel-body">
 
@@ -318,47 +318,57 @@
           <div class="propose-meta" id="propose-bid-meta"></div>
         </header>
 
-        <!-- ── 1단계: 자료 준비 ── -->
-        <section class="step-card" id="step-source">
+        <!-- ── 1단계 ── -->
+        <section class="step-card">
           <div class="step-head">
             <span class="step-no">1</span>
-            <h3>공고 자료 준비</h3>
-            <span class="step-hint" id="source-hint"></span>
+            <h3>나라장터 공고 자료</h3>
+            <span class="step-hint" id="notice-hint"></span>
+            <a class="attach-folder" id="attach-folder" href="#" target="_blank" rel="noopener" style="display:none">폴더 열기 →</a>
           </div>
-
-          <div class="source-grid">
-            <div class="source-box">
-              <div class="source-title">나라장터 첨부</div>
-              <div class="source-desc">공고에 붙어 있는 파일을 그대로 가져옵니다.</div>
-              <div class="attach-list" id="forms-list">
-                <div class="attach-empty">확인하는 중…</div>
-              </div>
-              <div class="forms-actions" id="forms-actions"></div>
-            </div>
-
-            <div class="source-box">
-              <div class="source-title">서식 직접 올리기</div>
-              <div class="source-desc">
-                첨부에 없거나 <b>.hwp</b>인 서식은 <b>.hwpx</b>로 저장해 올려주세요.
-              </div>
-              <label class="upload-zone" id="upload-zone">
-                <input type="file" id="upload-input" multiple accept=".hwpx,.pdf" hidden>
-                <span class="upload-icon">↑</span>
-                <span class="upload-text">클릭하거나 파일을 끌어다 놓으세요</span>
-                <span class="upload-sub">.hwpx 권장 · .hwp는 채울 수 없습니다</span>
-              </label>
-              <div class="upload-log" id="upload-log"></div>
-            </div>
+          <div class="attach-list" id="notice-list">
+            <div class="attach-empty">확인하는 중…</div>
           </div>
-
-          <div class="checklist" id="checklist"></div>
+          <div class="forms-actions" id="notice-actions"></div>
         </section>
 
-        <!-- ── 2단계: 분석 ── -->
-        <section class="step-card" id="step-analyze">
+        <!-- ── 2단계 ── -->
+        <section class="step-card">
           <div class="step-head">
             <span class="step-no">2</span>
-            <h3>분석 실행</h3>
+            <h3>제안요청서 올리기</h3>
+            <span class="step-hint">hwpx 필수</span>
+          </div>
+          <div class="source-desc">
+            나라장터 첨부는 대부분 <b>.hwp</b>라 프로그램이 읽지 못합니다.
+            한컴오피스에서 <b>다른 이름으로 저장 → .hwpx</b>로 바꿔 올려주세요.
+            <a href="https://www.hancom.com/support/faqCenter/faq/detail/3128" target="_blank" rel="noopener">한컴 일괄 변환기 안내 →</a>
+          </div>
+          <label class="upload-zone" id="upload-zone">
+            <input type="file" id="upload-input" multiple accept=".hwpx" hidden>
+            <span class="upload-icon">↑</span>
+            <span class="upload-text">제안요청서(RFP) hwpx를 올려주세요</span>
+            <span class="upload-sub">클릭하거나 파일을 끌어다 놓기 · 여러 개 가능</span>
+          </label>
+          <div class="upload-log" id="upload-log"></div>
+          <div class="checklist" id="rfp-status" style="display:none"></div>
+        </section>
+
+        <!-- ── 3단계 ── -->
+        <section class="step-card" id="step-forms" style="display:none">
+          <div class="step-head">
+            <span class="step-no">3</span>
+            <h3>이 공고에 필요한 서식</h3>
+            <span class="step-hint" id="forms-hint"></span>
+          </div>
+          <div class="form-index" id="form-index"></div>
+        </section>
+
+        <!-- ── 4단계 ── -->
+        <section class="step-card" id="step-analyze" style="display:none">
+          <div class="step-head">
+            <span class="step-no">4</span>
+            <h3>실적 · 인력 매칭</h3>
             <span class="step-hint">실적은 공고명으로, 인력은 연차로 추천합니다</span>
           </div>
           <div class="analyze-bar">
@@ -377,7 +387,6 @@
               <div class="propose-list tall" id="propose-perf-list"></div>
             </section>
           </div>
-
           <div class="propose-col">
             <section class="propose-section">
               <div class="propose-head">
@@ -387,8 +396,21 @@
               </div>
               <div class="propose-list tall" id="propose-hr-list"></div>
             </section>
+          </div>
+        </div>
 
-            <section class="propose-section" id="brief-section" style="display:none">
+      </div>
+
+      <div class="propose-dock">
+        <div class="propose-selected" id="propose-selected">선택 없음</div>
+        <div class="propose-actions">
+          <button type="button" class="btn-ghost" id="copy-perf">실적표 복사</button>
+          <button type="button" class="btn-ghost" id="copy-hr">인력표 복사</button>
+          <button type="button" class="btn-primary" id="fill-forms">서식 자동작성</button>
+        </div>
+      </div>
+    </div>
+
               <div class="propose-head">
                 <h3>공고문 본문</h3>
                 <span class="propose-hint" id="brief-meta"></span>

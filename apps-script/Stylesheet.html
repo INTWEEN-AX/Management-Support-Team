@@ -1403,6 +1403,68 @@
   .meets.no { color: var(--grey-2); background: var(--grey-5); border: 1px solid var(--border); }
   .pick-row.dim { opacity: .55; }
 
+  /* ── 제안요청서에서 뽑은 서식 목차 ── */
+  .form-index {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .form-item {
+    display: grid;
+    grid-template-columns: 56px 1fr auto;
+    gap: 12px;
+    align-items: start;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .form-item:last-child { border-bottom: none; }
+  .form-item.ready { background: var(--primary-5); }
+  .form-item.nofile { background: var(--amber-5); }
+
+  .form-no {
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    color: var(--grey-2);
+    text-align: right;
+    padding-top: 2px;
+    font-variant-numeric: tabular-nums;
+  }
+  .form-body { min-width: 0; }
+  .form-title {
+    display: block;
+    font-size: var(--fs-h4);
+    font-weight: var(--fw-medium);
+    color: var(--primary-black);
+    line-height: 1.4;
+  }
+  .form-note {
+    display: block;
+    margin-top: 2px;
+    font-size: var(--fs-caption);
+    color: var(--grey-2);
+  }
+  .form-item.ready .form-note { color: var(--primary-1); }
+  .form-item.nofile .form-note { color: var(--amber-1); }
+
+  .form-badge {
+    font-size: var(--fs-caption);
+    line-height: 20px;
+    white-space: nowrap;
+    padding: 0 8px;
+    border-radius: 2px;
+    border: 1px solid var(--border);
+    color: var(--grey-2);
+    background: var(--background);
+  }
+  .form-badge.kind-perf,
+  .form-badge.kind-hr,
+  .form-badge.kind-company {
+    color: var(--primary-1);
+    border-color: var(--primary-6);
+    background: var(--primary-5);
+  }
+  .form-badge.kind-holding { color: var(--amber-1); border-color: var(--amber-2); background: var(--amber-5); }
+
   /* 분야 판정 결과 */
   .field-verdict {
     display: flex;

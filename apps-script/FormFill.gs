@@ -30,14 +30,17 @@ var FORM_KINDS = [
   { kind: 'perf',    label: '실적',     source: '수행실적 DB',
     words: ['수행실적', '용역실적', '유사용역', '실적증명', '사업실적', '납품실적', '실적확인'] },
   { kind: 'hr',      label: '인력',     source: '인력현황 DB',
-    words: ['참여인력', '투입인력', '기술인력', '인력현황', '이력서', '참여기술자', '조직도', '인력구성'] },
+    words: ['참여인력', '투입인력', '기술인력', '인력현황', '이력서', '이력사항', '참여기술자',
+            '조직도', '조직및인력', '인력구성', '인력보유', '인적사항', '발표자'] },
   { kind: 'company', label: '회사정보', source: '회사 기본정보',
-    words: ['일반현황', '회사현황', '업체현황', '기업현황', '회사소개', '참가신청', '입찰참가신청', '청렴계약', '서약서', '확약서', '위임장'] },
+    words: ['일반현황', '회사현황', '업체현황', '기업현황', '회사소개', '참가신청', '입찰참가신청',
+            '접수증', '청렴계약', '서약서', '확약서', '위임장', '동의서', '보안서약'] },
   { kind: 'holding', label: '보유서류', source: '입찰서류 보관함',
     words: ['사업자등록증', '법인등기', '인감증명', '납세증명', '완납증명', '4대보험', '보험가입',
-            '신용평가', '중소기업확인', '직접생산', '재무제표', '통장사본', '산업재해'] },
+            '신용평가', '중소기업확인', '직접생산', '재무제표', '통장사본', '산업재해', '신인도'] },
   { kind: 'writing', label: '직접작성', source: '담당자 작성',
-    words: ['제안서', '수행계획', '사업계획', '가격제안', '산출내역', '견적', '과업수행계획'] },
+    words: ['제안서', '수행계획', '사업계획', '가격제안', '가격입찰', '산출내역', '견적',
+            '과업수행계획', '하도급'] },
   { kind: 'reference', label: '읽는 문서', source: '내용 파악용',
     words: ['입찰공고문', '공고문', '제안요청서', '과업지시서', '과업내용서', '규격서',
             '안내문', '유의사항', '행동규범', '설명서', '지침'] }
@@ -149,6 +152,72 @@ function countCompanyLabels_(trs) {
     });
   });
   return n;
+}
+
+// ─────────────────────────────────────────────────────────────
+// 제안요청서의 '입찰 관련 서식' 목차 추출
+//
+// 제안요청서 뒤쪽에는 보통 이런 목차가 붙어 있다.
+//   [서식 1호] 입찰참가신청서
+//   [서식 8호] 유사용역 수행실적
+//   [서식 7-1호] 참여인력 이력사항
+// 여기서 '이 공고에 뭘 내야 하는지' 를 그대로 읽어낸다.
+// ─────────────────────────────────────────────────────────────
+
+var FORM_INDEX_PATTERNS = [
+  /\[\s*서식\s*([\d\-]+)\s*호?\s*\]\s*([^\n\r\[※]{2,40})/g,
+  /\[\s*별지\s*제?\s*([\d\-]+)\s*호\s*서식\s*\]\s*([^\n\r\[※]{2,40})/g,
+  /서식\s*([\d\-]+)\s*호\s*[.)]\s*([^\n\r\[※]{2,40})/g
+];
+
+/** 목차 점선·페이지번호·꼬리 기호를 떼어낸다 */
+function cleanFormName_(s) {
+  return String(s)
+    .replace(/[·․…\-–—_]{3,}.*$/, '')
+    .replace(/\s*\d+\s*$/, '')
+    .replace(/\s+/g, ' ')
+    .replace(/[.,)\]]+$/, '')
+    .trim();
+}
+
+/** 서식 번호로 정렬 (4호 < 4-1호 < 5호) */
+function compareFormNo_(a, b) {
+  var pa = String(a).split('-').map(Number);
+  var pb = String(b).split('-').map(Number);
+  return (pa[0] - pb[0]) || ((pa[1] || 0) - (pb[1] || 0));
+}
+
+/** 제안요청서 본문에서 [서식 N호] 목록을 뽑는다 */
+function extractFormIndex_(text) {
+  if (!text) return [];
+  var out = [], seen = {};
+
+  FORM_INDEX_PATTERNS.forEach(function (re) {
+    var m;
+    re.lastIndex = 0;
+    while ((m = re.exec(text)) !== null) {
+      var no = String(m[1]).trim();
+      var name = cleanFormName_(m[2]);
+      if (name.length < 2 || name.length > 40) continue;
+
+      var key = no + '|' + name.replace(/\s+/g, '');
+      if (seen[key]) continue;
+      seen[key] = true;
+
+      var c = classifyFormName_(name);
+      out.push({
+        no: no,
+        name: name,
+        kind: c.kind,
+        kindLabel: c.label,
+        source: c.source,
+        fillable: ['perf', 'hr', 'company'].indexOf(c.kind) > -1
+      });
+    }
+  });
+
+  out.sort(function (a, b) { return compareFormNo_(a.no, b.no); });
+  return out;
 }
 
 /** 공고문 본문에서 제출서류·붙임 목차로 보이는 줄을 뽑는다 */
@@ -294,6 +363,109 @@ function getRequiredForms(bidNo, bidOrd) {
     },
     company: getCompanyInfo()
   }));
+}
+
+// ─────────────────────────────────────────────────────────────
+// 제안서 쓰기 — 화면이 쓰는 한 방 호출
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 제안서 작성에 필요한 것을 한 번에 돌려준다.
+ *
+ *   notice   나라장터 첨부 목록 (뭐가 있는지 알려주는 용도)
+ *   uploads  사람이 올린 hwpx 들
+ *   rfp      그중 '입찰 관련 서식' 목차가 가장 많이 잡힌 문서 = 제안요청서
+ *   forms    그 목차에서 뽑아낸 제출 서식 목록
+ *   tables   업로드 문서 안에서 찾은 채울 수 있는 표
+ *
+ * 나라장터 첨부는 hwp 가 대부분이라 자동 변환이 안 된다.
+ * 그래서 제안요청서만큼은 사람이 hwpx 로 올리는 걸 전제로 한다.
+ */
+function getProposalPack(bidNo, bidOrd) {
+  var bid = findBidRecord_(bidNo, bidOrd);
+  var info = getBidAttachmentInfo(bidNo, bidOrd);
+
+  var notice = [], uploads = [];
+  (info.files || []).forEach(function (f) {
+    var entry = {
+      name: f.name,
+      ext: f.ext,
+      url: f.url,
+      fileId: extractDriveId_(f.url || ''),
+      kindLabel: classifyFormName_(f.name).label
+    };
+    if (f.ext === 'hwpx') uploads.push(entry);
+    else notice.push(entry);
+  });
+
+  // 업로드된 hwpx 를 훑어 서식 목차가 가장 많이 나온 문서를 제안요청서로 본다
+  var rfp = null, forms = [], tables = [];
+  uploads.forEach(function (u) {
+    if (!u.fileId) return;
+    try {
+      var file = DriveApp.getFileById(u.fileId);
+      var text = hwpxToTextCached_(file);
+      var idx = extractFormIndex_(text);
+      var tbl = scanHwpxTablesCached_(file);
+
+      u.formCount = idx.length;
+      u.tableCount = tbl.length;
+
+      if (!rfp || idx.length > forms.length) {
+        rfp = u;
+        forms = idx;
+      }
+      tbl.forEach(function (t) {
+        t.fileId = u.fileId;
+        t.fileName = u.name;
+        tables.push(t);
+      });
+    } catch (e) {
+      u.error = String(e.message || e).split('\n')[0];
+      Logger.log('업로드 문서 분석 실패: ' + u.name + ' — ' + e);
+    }
+  });
+
+  // 채워야 하는 서식 중 실제로 표가 잡힌 것
+  var needPerf = forms.some(function (f) { return f.kind === 'perf'; });
+  var needHr = forms.some(function (f) { return f.kind === 'hr'; });
+  var hasPerfTable = tables.some(function (t) { return t.kind === 'perf'; });
+  var hasHrTable = tables.some(function (t) { return t.kind === 'hr'; });
+
+  return JSON.parse(JSON.stringify({
+    bid: bid,
+    notice: notice,
+    uploads: uploads,
+    downloaded: info.downloaded,
+    folderUrl: info.folderUrl,
+    rfp: rfp,
+    forms: forms,
+    tables: tables,
+    summary: {
+      total: forms.length,
+      fillable: forms.filter(function (f) { return f.fillable; }).length,
+      needPerf: needPerf, hasPerfTable: hasPerfTable,
+      needHr: needHr, hasHrTable: hasHrTable
+    }
+  }));
+}
+
+/** hwpx 본문 텍스트 — 서식 목차를 읽기 위한 것 (캐시) */
+function hwpxToTextCached_(file) {
+  var key = 'txt_' + file.getId() + '_' + file.getLastUpdated().getTime();
+  var cache = CacheService.getScriptCache();
+
+  var hit = cache.get(key);
+  if (hit) return hit;
+
+  var text = hwpxToText_(file);
+  try {
+    // 캐시 항목 한도가 100KB 라 목차가 있을 만한 앞부분만 저장한다
+    cache.put(key, text.slice(0, 90000), 6 * 60 * 60);
+  } catch (e) {
+    Logger.log('본문 캐시 저장 실패(무시): ' + e);
+  }
+  return text;
 }
 
 /**
