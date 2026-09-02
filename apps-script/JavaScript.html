@@ -175,6 +175,7 @@
       return;
     }
     ALL_RECORDS = records;
+    if (proposeBid) renderPerfList();   // 제안서 화면을 먼저 열었을 수 있다
     populateYearFilter(records);
     populateFieldFilter(records);
     document.getElementById('updated-at').textContent =
@@ -494,6 +495,7 @@
       return;
     }
     ALL_HR_RECORDS = records;
+    if (proposeBid) renderProposePeople();
     assignDeptColors(records);
     populateHRDeptFilter(records);
 
@@ -1108,10 +1110,9 @@
 
   let proposeBid = null;
   let proposeGen = 0;
-  let proposeMatches = [];
+  let proposePerfList = [];
   let proposeForms = [];            // 채울 수 있는 표 목록
   let proposePack = null;           // 자료·서식 묶음
-  let proposePeople = [];
   let briefText = '';
   const selectedPerf = new Set();
   const selectedHR = new Set();
@@ -1119,10 +1120,9 @@
   function openPropose(bid) {
     proposeBid = bid;
     proposeGen++;
-    proposeMatches = [];
+    proposePerfList = [];
     proposeForms = [];
     proposePack = null;
-    proposePeople = [];
     briefText = '';
     selectedPerf.clear();
     selectedHR.clear();
@@ -1143,8 +1143,6 @@
     else { src.style.display = 'none'; }
 
     // 결과는 [분석 실행] 을 눌러야 나온다 — 공고를 열자마자 공고문을 읽지 않는다
-    document.getElementById('result-grid').style.display = 'none';
-    document.getElementById('analyze-status').textContent = '아직 실행하지 않았습니다.';
     document.getElementById('upload-log').innerHTML = '';
     document.getElementById('notice-list').innerHTML =
       '<div class="attach-empty">확인하는 중…</div>';
@@ -1152,8 +1150,9 @@
     document.getElementById('notice-hint').textContent = '';
     document.getElementById('step-qual').style.display = 'none';
     document.getElementById('step-forms').style.display = 'none';
-    document.getElementById('step-analyze').style.display = 'none';
     document.getElementById('rfp-status').style.display = 'none';
+    renderPerfList();
+    renderProposePeople();
     renderProposeSelected();
 
     loadPack();
@@ -1234,9 +1233,7 @@
     renderQualifications(res.quals || []);
     renderFormIndex(res);
 
-    // 서식이 확인돼야 분석 단계를 연다
-    document.getElementById('step-analyze').style.display =
-      (res.forms || []).length ? '' : 'none';
+
   }
 
   /** 참가자격 · 실적요건 — 실적을 고르기 전에 봐야 할 조건 */
@@ -1379,119 +1376,105 @@
 
   // ── 2단계: 분석 ──
 
-  function runAnalyze() {
-    const gen = proposeGen;
-    const btn = document.getElementById('run-analyze');
-    btn.disabled = true;
-    document.getElementById('analyze-status').textContent =
-      '분석하는 중… (공고문을 처음 읽을 때는 시간이 걸립니다)';
-
-    google.script.run
-      .withSuccessHandler(function (res) {
-        if (gen !== proposeGen) return;
-        btn.disabled = false;
-        onAnalyzed(res);
-      })
-      .withFailureHandler(function (err) {
-        if (gen !== proposeGen) return;
-        btn.disabled = false;
-        document.getElementById('analyze-status').textContent =
-          '분석 실패 — ' + String(err.message || err).split('\n')[0];
-      })
-      .runProposeAnalysis(proposeBid.no, proposeBid.ord);
-  }
-
-  function onAnalyzed(res) {
-    proposeMatches = res.matches || [];
-    proposePeople = res.people || [];
-    selectedPerf.clear();
-    selectedHR.clear();
-
-    document.getElementById('result-grid').style.display = '';
-    document.getElementById('analyze-status').textContent =
-      [res.field && res.field.field ? '분야 ' + res.field.field : '',
-       '실적 ' + proposeMatches.length + '건',
-       res.brief ? '공고문 ' + res.brief.chars.toLocaleString() + '자 (' + res.brief.source + ')'
-                 : (res.briefError ? '공고문 없음 — ' + res.briefError : '')]
-      .filter(Boolean).join(' · ');
-
-    renderPerfList();
-    renderProposePeople(res.requirement);
-    renderProposeSelected();
-  }
-
+  /**
+   * 실적·인력 목록.
+   *
+   * 실무에서 사람을 어디 배치할지는 그때그때 정하는 것이라 기준이 없다.
+   * 그래서 점수로 거르지 않고 DB 전체를 보여주고 사람이 고르게 한다.
+   * 대신 찾기 쉽도록 검색과 정렬만 붙였다.
+   */
   function renderPerfList() {
     const wrap = document.getElementById('propose-perf-list');
-    if (!proposeMatches.length) {
-      wrap.innerHTML = '<div class="empty-state">제목이 겹치는 실적이 없습니다.<br>' +
-        '해본 적 없는 분야의 공고일 수 있습니다.</div>';
-      document.getElementById('propose-perf-count').textContent = '';
+    const q = (document.getElementById('propose-perf-search').value || '').trim().toLowerCase();
+    const sortBy = document.getElementById('propose-perf-sort').value;
+
+    let list = ALL_RECORDS.filter(function (r) {
+      if (!r.taskName) return false;
+      if (!q) return true;
+      return (r.taskName + ' ' + (r.org || '') + ' ' + (r.field || '') + ' ' + (r.desc || ''))
+        .toLowerCase().indexOf(q) > -1;
+    });
+
+    list.sort(function (a, b) {
+      switch (sortBy) {
+        case 'amount': return (Number(b.amount) || 0) - (Number(a.amount) || 0);
+        case 'name':   return String(a.taskName).localeCompare(String(b.taskName), 'ko');
+        case 'field':  return String(a.field || '').localeCompare(String(b.field || ''), 'ko') ||
+                              (Number(b.year) || 0) - (Number(a.year) || 0);
+        default:       return (Number(b.year) || 0) - (Number(a.year) || 0);
+      }
+    });
+
+    proposePerfList = list;
+    document.getElementById('propose-perf-count').textContent =
+      list.length + '건 / 전체 ' + ALL_RECORDS.length + '건';
+
+    if (!list.length) {
+      wrap.innerHTML = '<div class="empty-state">조건에 맞는 실적이 없습니다.</div>';
       return;
     }
-    document.getElementById('propose-perf-count').textContent =
-      proposeMatches.length + '건 — 제출할 것만 고르세요';
 
-    wrap.innerHTML = proposeMatches.map(function (m, i) {
-      const r = m.record;
+    wrap.innerHTML = list.map(function (r, i) {
       const amount = r.amount ? Math.round(r.amount / 10000).toLocaleString() + '만원' : '-';
-      const hits = (m.hits || []).map(function (h) {
-        return '<span class="hit">' + escapeHtml(h) + '</span>';
-      }).join('');
-      const tags = [m.sameOrg ? '<span class="same-org">같은 발주처</span>' : '',
-                    m.sameField ? '<span class="same-field">같은 분야</span>' : ''].join('');
-
-      return '<label class="pick-row">' +
-        '<input type="checkbox" data-idx="' + i + '">' +
-        '<span class="pick-score">' + m.scorePct + '</span>' +
+      const checked = selectedPerf.has(perfKeyOf(r)) ? ' checked' : '';
+      return '<label class="pick-row compact">' +
+        '<input type="checkbox" data-idx="' + i + '"' + checked + '>' +
         '<span class="pick-main">' +
-          '<span class="pick-title">' + escapeHtml(r.taskName) + tags + '</span>' +
+          '<span class="pick-title">' + escapeHtml(r.taskName) + '</span>' +
           '<span class="pick-sub">' + escapeHtml(r.year || '') + ' · ' +
             escapeHtml(r.field || '') + ' · ' + escapeHtml(r.org || '') + ' · ' + amount + '</span>' +
-          (hits ? '<span class="pick-hits">제목 겹침 ' + hits + '</span>' : '') +
         '</span>' +
       '</label>';
     }).join('');
 
     wrap.querySelectorAll('input[type=checkbox]').forEach(function (cb) {
       cb.addEventListener('change', function () {
-        const idx = Number(cb.dataset.idx);
-        if (cb.checked) selectedPerf.add(idx); else selectedPerf.delete(idx);
+        const r = proposePerfList[Number(cb.dataset.idx)];
+        const key = perfKeyOf(r);
+        if (cb.checked) selectedPerf.add(key); else selectedPerf.delete(key);
         renderProposeSelected();
       });
     });
   }
 
-  function renderProposePeople(requirement) {
+  function perfKeyOf(r) {
+    return String(r.taskName || '').replace(/\s+/g, '') + '|' + (r.year || '');
+  }
+
+  function renderProposePeople() {
     const wrap = document.getElementById('propose-hr-list');
     const q = (document.getElementById('propose-hr-search').value || '').trim().toLowerCase();
 
-    document.getElementById('hr-req').textContent = requirement
-      ? '요구 경력 ' + requirement.years + '년 이상'
-      : '연차 높은 순';
+    const list = ALL_HR_RECORDS
+      .filter(function (r) { return String(r.status || '').indexOf('재직') === 0; })
+      .filter(function (r) {
+        if (!q) return true;
+        return (r.name + ' ' + r.dept + ' ' + r.position).toLowerCase().indexOf(q) > -1;
+      })
+      .sort(function (a, b) {
+        return String(a.dept || '').localeCompare(String(b.dept || ''), 'ko') ||
+               String(a.name || '').localeCompare(String(b.name || ''), 'ko');
+      });
 
-    const list = proposePeople.filter(function (p) {
-      if (!q) return true;
-      return (p.name + ' ' + p.dept + ' ' + p.position).toLowerCase().indexOf(q) > -1;
-    });
+    document.getElementById('propose-hr-count').textContent =
+      list.length + '명 / 재직 ' + ALL_HR_RECORDS.filter(function (r) {
+        return String(r.status || '').indexOf('재직') === 0;
+      }).length + '명';
 
     if (!list.length) {
       wrap.innerHTML = '<div class="empty-state">해당하는 인력이 없습니다.</div>';
       return;
     }
 
-    wrap.innerHTML = list.map(function (p) {
-      const checked = selectedHR.has(p.name) ? ' checked' : '';
-      const years = p.months === null ? '-' : (Math.floor(p.months / 12) + '년 ' + (p.months % 12) + '개월');
-      const flag = requirement
-        ? (p.meets ? '<span class="meets ok">충족</span>' : '<span class="meets no">미달</span>')
-        : '';
-      return '<label class="pick-row' + (requirement && !p.meets ? ' dim' : '') + '">' +
-        '<input type="checkbox" data-name="' + escapeHtml(p.name) + '"' + checked + '>' +
-        '<span class="pick-score">' + (p.months === null ? '–' : Math.floor(p.months / 12)) + '</span>' +
+    wrap.innerHTML = list.map(function (r) {
+      const checked = selectedHR.has(r.name) ? ' checked' : '';
+      return '<label class="pick-row compact">' +
+        '<input type="checkbox" data-name="' + escapeHtml(r.name) + '"' + checked + '>' +
         '<span class="pick-main">' +
-          '<span class="pick-title">' + escapeHtml(p.name) +
-            '<span class="pick-pos">' + escapeHtml(p.position || '') + '</span>' + flag + '</span>' +
-          '<span class="pick-sub">' + escapeHtml(p.dept || '') + ' · 경력 ' + years + '</span>' +
+          '<span class="pick-title">' + escapeHtml(r.name) +
+            '<span class="pick-pos">' + escapeHtml(r.position || '') + '</span></span>' +
+          '<span class="pick-sub">' + escapeHtml(r.dept || '') + ' · 경력 ' +
+            escapeHtml(r.career || '-') + '</span>' +
         '</span>' +
       '</label>';
     }).join('');
@@ -1503,7 +1486,6 @@
       });
     });
   }
-
 
   function renderProposeSelected() {
     const parts = [];
@@ -1531,10 +1513,7 @@
     }
 
     const selection = {
-      perfKeys: Array.from(selectedPerf).map(function (i) {
-        const r = proposeMatches[i].record;
-        return String(r.taskName || '').replace(/\s+/g, '') + '|' + (r.year || '');
-      }),
+      perfKeys: Array.from(selectedPerf),
       hrNames: Array.from(selectedHR)
     };
 
@@ -1595,13 +1574,18 @@
             '<div class="gen-warn">' + escapeHtml(r.error.split('\n')[0]) + '</div>' +
           '</div>';
         }).join('') +
-        (ok.length && ok[0].out.placeholders && ok[0].out.placeholders.length
-          ? '<div class="gen-warn">⚠ 회사정보 중 ' + ok[0].out.placeholders.join(', ') +
-            ' 은(는) 아직 더미 값입니다. 제출 전에 반드시 확인하세요.</div>'
+        (ok.length && ok[0].out.missing && ok[0].out.missing.length
+          ? '<div class="gen-warn">⚠ 회사정보가 비어 있어 못 채운 항목: ' +
+            escapeHtml(ok[0].out.missing.join(', ')) +
+            '<br>[입찰공고] → [회사정보 시트 만들기] 에서 값을 채우면 다음부터 자동으로 들어갑니다.</div>'
+          : '') +
+        (ok.length && ok[0].out.dummy && ok[0].out.dummy.length
+          ? '<div class="gen-warn">⚠ 자리표시 값으로 보이는 항목: ' +
+            escapeHtml(ok[0].out.dummy.join(', ')) + ' — 제출 전 확인하세요.</div>'
           : '') +
       '</div>';
 
-    document.getElementById('step-analyze').insertAdjacentHTML('afterend', html);
+    document.getElementById('step-forms').insertAdjacentHTML('afterend', html);
     toast(ok.length ? '서식을 생성했습니다.' : '서식 생성에 실패했습니다.');
   }
 
@@ -1609,9 +1593,9 @@
 
   function perfTable() {
     const head = ['연번', '과업명', '발주처', '계약금액(원)', '계약기간', '용역개요'];
-    const rows = Array.from(selectedPerf).sort(function (a, b) { return a - b; })
-      .map(function (idx, i) {
-        const r = proposeMatches[idx].record;
+    const rows = ALL_RECORDS
+      .filter(function (r) { return selectedPerf.has(perfKeyOf(r)); })
+      .map(function (r, i) {
         return [String(i + 1), r.taskName || '', r.org || '',
           r.amount ? Number(r.amount).toLocaleString() : (r.amountRaw || ''),
           r.contractPeriod || r.contractDate || '', r.desc || ''];
@@ -1711,10 +1695,9 @@
 
   function initProposeModal() {
     initUpload();
-    document.getElementById('run-analyze').addEventListener('click', runAnalyze);
-    document.getElementById('propose-hr-search').addEventListener('input', function () {
-      renderProposePeople(null);
-    });
+    document.getElementById('propose-perf-search').addEventListener('input', renderPerfList);
+    document.getElementById('propose-perf-sort').addEventListener('change', renderPerfList);
+    document.getElementById('propose-hr-search').addEventListener('input', renderProposePeople);
     document.getElementById('copy-perf').addEventListener('click', function () {
       if (!selectedPerf.size) return toast('선택된 실적이 없습니다.');
       copyTables([{ title: '수행실적', rows: perfTable() }]);

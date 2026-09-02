@@ -375,40 +375,49 @@
           <div class="form-index" id="form-index"></div>
         </section>
 
+
         <!-- ── 4단계 ── -->
-        <section class="step-card" id="step-analyze" style="display:none">
+        <section class="step-card">
           <div class="step-head">
             <span class="step-no">4</span>
-            <h3>실적 · 인력 매칭</h3>
-            <span class="step-hint">실적은 공고명으로, 인력은 연차로 추천합니다</span>
+            <h3>제출할 실적 · 인력 고르기</h3>
+            <span class="step-hint">배치 기준은 사람이 정합니다 — 전체에서 직접 고르세요</span>
           </div>
-          <div class="analyze-bar">
-            <button type="button" class="btn-primary" id="run-analyze">분석 실행</button>
-            <span class="analyze-status" id="analyze-status">아직 실행하지 않았습니다.</span>
+
+          <div class="propose-grid">
+            <div class="propose-col">
+              <section class="propose-section">
+                <div class="propose-head">
+                  <h3>수행실적</h3>
+                  <span class="propose-hint" id="propose-perf-count"></span>
+                </div>
+                <div class="filters compact">
+                  <input type="text" id="propose-perf-search" placeholder="과업명 · 발주처 · 분야 검색">
+                  <select id="propose-perf-sort">
+                    <option value="year">최신 연도순</option>
+                    <option value="amount">금액 높은순</option>
+                    <option value="field">분야순</option>
+                    <option value="name">과업명순</option>
+                  </select>
+                </div>
+                <div class="propose-list tall" id="propose-perf-list"></div>
+              </section>
+            </div>
+
+            <div class="propose-col">
+              <section class="propose-section">
+                <div class="propose-head">
+                  <h3>참여인력</h3>
+                  <span class="propose-hint" id="propose-hr-count"></span>
+                </div>
+                <div class="filters compact">
+                  <input type="text" id="propose-hr-search" placeholder="이름 · 부서 · 직위 검색">
+                </div>
+                <div class="propose-list tall" id="propose-hr-list"></div>
+              </section>
+            </div>
           </div>
         </section>
-
-        <div class="propose-grid" id="result-grid" style="display:none">
-          <div class="propose-col">
-            <section class="propose-section">
-              <div class="propose-head">
-                <h3>유사 수행실적</h3>
-                <span class="propose-hint" id="propose-perf-count"></span>
-              </div>
-              <div class="propose-list tall" id="propose-perf-list"></div>
-            </section>
-          </div>
-          <div class="propose-col">
-            <section class="propose-section">
-              <div class="propose-head">
-                <h3>참여인력</h3>
-                <span class="propose-hint" id="hr-req"></span>
-                <input type="text" id="propose-hr-search" placeholder="이름 · 부서 검색">
-              </div>
-              <div class="propose-list tall" id="propose-hr-list"></div>
-            </section>
-          </div>
-        </div>
 
       </div>
 

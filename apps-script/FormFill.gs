@@ -531,20 +531,62 @@ function formReason_(kind, ext) {
 
 /** 라벨 → 회사정보 필드 (라벨형 표에서 씀) */
 var COMPANY_LABEL_MAP = {
-  '업체명': 'name', '회사명': 'name', '상호': 'name', '법인명': 'name', '기업명': 'name', '제안사': 'name',
-  '대표자': 'ceo', '대표이사': 'ceo', '대표자명': 'ceo', '성명': 'ceo',
-  '사업자등록번호': 'bizNo', '사업자번호': 'bizNo',
-  '법인등록번호': 'corpNo',
-  '소재지': 'address', '주소': 'address', '사업장소재지': 'address', '본사소재지': 'address',
-  '우편번호': 'zipCode',
-  '전화번호': 'tel', '연락처': 'tel', '대표전화': 'tel',
-  '팩스': 'fax', '팩스번호': 'fax',
-  '이메일': 'email', '전자우편': 'email',
-  '홈페이지': 'homepage',
+  // 기본
+  '업체명': 'name', '회사명': 'name', '상호': 'name', '법인명': 'name', '기업명': 'name',
+  '제안사': 'name', '상호명': 'name', '업체': 'name', '신청인': 'name',
+  '대표자': 'ceo', '대표이사': 'ceo', '대표자명': 'ceo', '성명': 'ceo', '대표자성명': 'ceo',
+  '사업자등록번호': 'bizNo', '사업자번호': 'bizNo', '등록번호': 'bizNo',
+  '법인등록번호': 'corpNo', '법인번호': 'corpNo',
   '설립일': 'foundedDate', '설립년월일': 'foundedDate', '설립일자': 'foundedDate',
-  '업태': 'bizType', '종목': 'bizItem',
+  '창립일': 'foundedDate',
+  '설립연도': 'foundedYear', '설립년도': 'foundedYear',
+
+  // 연락처
+  '소재지': 'address', '주소': 'address', '사업장소재지': 'address', '본사소재지': 'address',
+  '본사주소': 'address', '회사주소': 'address',
+  '우편번호': 'zipCode',
+  '전화번호': 'tel', '연락처': 'tel', '대표전화': 'tel', '전화': 'tel',
+  '팩스': 'fax', '팩스번호': 'fax', 'fax': 'fax',
+  '이메일': 'email', '전자우편': 'email', 'e-mail': 'email',
+  '홈페이지': 'homepage', '웹사이트': 'homepage',
+
+  // 사업
+  '업태': 'bizType', '종목': 'bizItem', '업종': 'bizItem',
+  '주요사업': 'mainBiz', '주요업무': 'mainBiz', '주력분야': 'mainBiz', '사업분야': 'mainBiz',
+  '조달청등록번호': 'g2bRegNo', '나라장터등록번호': 'g2bRegNo', '입찰참가자격등록번호': 'g2bRegNo',
+  '등록업종': 'g2bLicense', '면허': 'g2bLicense', '보유면허': 'g2bLicense',
+
+  // 규모
+  '기업규모': 'companyScale', '기업구분': 'companyScale',
+  '자본금': 'capital',
+  '매출액': 'revenue', '연매출': 'revenue', '최근년도매출액': 'revenue', '전년도매출액': 'revenue',
+  '최근3년평균매출액': 'revenue3y', '3년평균매출액': 'revenue3y',
+  '총자산': 'totalAsset', '자산총계': 'totalAsset',
+  '결산연도': 'revenueYear',
+
+  // 인적구성
   '상시근로자수': 'employees', '직원수': 'employees', '종업원수': 'employees',
-  '기업규모': 'companyScale', '신용등급': 'creditGrade'
+  '상시종업원수': 'employees', '근로자수': 'employees',
+  '총인원': 'employeesAll', '총인원수': 'employeesAll', '임직원수': 'employeesAll',
+  '인적구성': 'employeesAll', '정규직': 'employeesFull', '상근': 'employeesFull',
+  '비상근': 'employeesPart', '비정규직': 'employeesPart',
+
+  // 신인도
+  '신용등급': 'creditGrade', '신용평가등급': 'creditGrade', '기업신용등급': 'creditGrade',
+  '신용평가기관': 'creditAgency', '평가기관': 'creditAgency',
+  '제재여부': 'sanctionYn', '부정당업자제재여부': 'sanctionYn', '입찰참가자격제한': 'sanctionYn',
+  '제재기관': 'sanctionOrg', '처분기관': 'sanctionOrg',
+  '제재기간': 'sanctionPeriod', '제한기간': 'sanctionPeriod',
+  '제재사유': 'sanctionReason', '처분사유': 'sanctionReason',
+  '산업재해율': 'accidentRate', '재해율': 'accidentRate',
+  '보유인증': 'certifications', '인증현황': 'certifications', '인증': 'certifications',
+  '여성기업': 'womanBiz', '여성기업여부': 'womanBiz',
+  '장애인기업': 'disabledBiz', '장애인기업여부': 'disabledBiz',
+  '사회적기업': 'socialBiz', '사회적기업여부': 'socialBiz',
+
+  // 금융
+  '주거래은행': 'bank', '거래은행': 'bank', '은행': 'bank',
+  '계좌번호': 'accountNo', '예금주': 'accountHolder'
 };
 
 /** 반복형 표 머리글 → 실적 필드 */
@@ -638,7 +680,8 @@ function generateFilledForm(fileId, selection, bidNo, bidOrd) {
     url: saved.getUrl(),
     downloadUrl: 'https://drive.google.com/uc?export=download&id=' + saved.getId(),
     report: report,
-    placeholders: company._placeholders || []
+    missing: company._missing || [],
+    dummy: company._dummy || []
   }));
 }
 
