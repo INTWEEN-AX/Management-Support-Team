@@ -218,7 +218,10 @@ function careerMonths_(text) {
   var y = s.match(/(\d+)\s*년/);
   var m = s.match(/(\d+)\s*개?월/);
   if (!y && !m) return null;
-  return (y ? parseInt(y[1], 10) * 12 : 0) + (m ? parseInt(m[1], 10) : 0);
+  var months = (y ? parseInt(y[1], 10) * 12 : 0) + (m ? parseInt(m[1], 10) : 0);
+  // 시트에 '126년 8개월' 같은 계산 오류가 있다. 사람 경력으로 불가능한 값은 버린다
+  if (months > 60 * 12) return null;
+  return months;
 }
 
 /** 공고문에서 요구 경력을 찾는다 — 없으면 null */

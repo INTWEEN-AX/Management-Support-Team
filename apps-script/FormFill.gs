@@ -309,6 +309,7 @@ function uploadFormFile(payload) {
 }
 
 function formReason_(kind, ext) {
+  if (kind === 'reference') return '내용 파악용 문서입니다 — 채우는 서식이 아닙니다';
   if (kind === 'holding') return '이미 보유한 서류입니다 — 입찰서류 탭에서 최신본을 받으세요';
   if (kind === 'writing') return '서술형 문서라 사람이 작성해야 합니다';
   if (kind === 'unknown') return '무엇을 채워야 할 서식인지 판단하지 못했습니다';
@@ -485,13 +486,15 @@ function fillRepeatTable_(grid, cols, rows, report, kind) {
     if (!empty) continue;
 
     var item = rows[used];
+    var wrote = 0;
     Object.keys(cols).forEach(function (ci) {
       var idx = Number(ci);
       if (idx >= cells.length) return;
       var field = cols[ci];
       var value = (field === '_index') ? String(used + 1) : (item[field] || '');
-      if (value !== '') setCellText_(cells[idx], String(value));
+      if (value !== '' && setCellText_(cells[idx], String(value))) wrote++;
     });
+    if (!wrote) continue;      // 한 칸도 못 썼으면 이 행은 쓴 걸로 치지 않는다
     used++;
   }
 
@@ -519,16 +522,12 @@ function fillLabelTable_(grid, company, report) {
 
       // 오른쪽 칸
       if (c + 1 < grid[r].length && isEmptyCell_(collectText_(grid[r][c + 1]))) {
-        setCellText_(grid[r][c + 1], String(value));
-        report.company++;
-        continue;
+        if (setCellText_(grid[r][c + 1], String(value))) { report.company++; continue; }
       }
       // 아래 칸 (세로형 표)
       if (r + 1 < grid.length && c < grid[r + 1].length &&
           isEmptyCell_(collectText_(grid[r + 1][c]))) {
-        setCellText_(grid[r + 1][c], String(value));
-        report.company++;
-        continue;
+        if (setCellText_(grid[r + 1][c], String(value))) { report.company++; continue; }
       }
       report.unfilled.push(text);
     }
@@ -537,15 +536,40 @@ function fillLabelTable_(grid, company, report) {
 
 /**
  * 셀의 텍스트를 바꾼다.
- * 첫 번째 <hp:t> 에 값을 넣고 나머지는 비운다 —
- * 서식의 글꼴·정렬은 문단 속성에 있으므로 그대로 유지된다.
+ *
+ * ⚠ 빈 칸에는 <hp:t> 요소가 아예 없다. 값을 넣을 자리가 없으므로
+ *   run 안에 <hp:t> 를 새로 만들어 붙여야 한다.
+ *   (이걸 놓쳐서 '채웠다'고 보고하고도 실제로는 빈 문서가 나왔다)
+ *
+ * 글꼴·정렬은 문단/글자 속성에 있으므로 텍스트만 넣으면 서식은 유지된다.
  */
 function setCellText_(tc, value) {
   var ts = findDescendants_(tc, 't');
-  if (!ts.length) return false;
-  ts[0].setText(value);
-  for (var i = 1; i < ts.length; i++) ts[i].setText('');
-  return true;
+  if (ts.length) {
+    ts[0].setText(value);
+    for (var i = 1; i < ts.length; i++) ts[i].setText('');
+    return true;
+  }
+
+  var ns = tc.getNamespace();
+
+  // run 은 있는데 t 만 없는 경우 — 가장 흔하다
+  var runs = findDescendants_(tc, 'run');
+  if (runs.length) {
+    runs[0].addContent(XmlService.createElement('t', ns).setText(value));
+    return true;
+  }
+
+  // 문단만 있는 경우 — run 까지 만들어 준다
+  var ps = findDescendants_(tc, 'p');
+  if (ps.length) {
+    var run = XmlService.createElement('run', ns);
+    run.setAttribute('charPrIDRef', '0');
+    run.addContent(XmlService.createElement('t', ns).setText(value));
+    ps[0].addContent(run);
+    return true;
+  }
+  return false;
 }
 
 // ─────────────────────────────────────────────────────────────
