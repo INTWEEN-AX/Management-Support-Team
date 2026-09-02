@@ -191,60 +191,56 @@ function getBidAttachmentInfo(bidNo, bidOrd) {
   var no = String(bidNo || '').trim();
   var out = { files: [], folderUrl: '', downloaded: false, hasReadable: false, error: '' };
 
+  // 이미 받아둔 폴더가 있으면 그것만 본다.
+  // 나라장터를 다시 부르면 업무구분 3종을 순회하느라 느린데, 로컬 폴더가
+  // 더 정확하기까지 하다 (압축 해제분·사용자가 올린 변환본이 들어 있다).
+  var folder = null;
   try {
-    var items = fetchBidByNo_(no);
-    if (items.length) {
-      extractSpecDocs_(items[0]).forEach(function (d) {
-        var lower = String(d.name).toLowerCase();
-        var ext = lower.replace(/^.*\./, '');
-        out.files.push({
-          name: d.name,
-          ext: ext,
-          where: 'remote',
-          readable: isReadableExt_(ext),
-          excluded: isExcludedBriefName_(lower),
-          note: attachmentNote_(ext, isExcludedBriefName_(lower)),
-          url: d.url
-        });
-      });
-    }
+    var bid = findBidRecord_(no, bidOrd);
+    var it = getBidAttachFolder_().getFoldersByName(bidFolderName_(bid));
+    if (it.hasNext()) folder = it.next();
   } catch (e) {
     out.error = String(e.message || e);
   }
 
-  // 이미 받아둔 폴더가 있으면 그 안을 보여준다 (압축 해제분·사용자가 넣은 변환본 포함)
-  try {
-    var bids = getBidData();
-    var bid = null;
-    for (var i = 0; i < bids.length; i++) {
-      if (String(bids[i].no).trim() === no) { bid = bids[i]; break; }
-    }
-    if (bid) {
-      var parent = getBidAttachFolder_();
-      var it = parent.getFoldersByName(bidFolderName_(bid));
-      if (it.hasNext()) {
-        var folder = it.next();
-        out.downloaded = true;
-        out.folderUrl = folder.getUrl();
-        out.files = [];   // 로컬이 더 정확하므로 원격 목록을 대체한다
-
-        rankAllFiles_(folder).forEach(function (f) {
-          if (f.name === BRIEF_CACHE_NAME) return;
-          var lower = f.name.toLowerCase();
+  if (folder) {
+    out.downloaded = true;
+    out.folderUrl = folder.getUrl();
+    rankAllFiles_(folder).forEach(function (f) {
+      if (f.name === BRIEF_CACHE_NAME) return;
+      var lower = f.name.toLowerCase();
+      out.files.push({
+        name: f.name,
+        ext: f.ext,
+        where: 'drive',
+        readable: isReadableExt_(f.ext),
+        excluded: isExcludedBriefName_(lower),
+        note: attachmentNote_(f.ext, isExcludedBriefName_(lower)),
+        url: f.file.getUrl()
+      });
+    });
+  } else {
+    // 아직 안 받았을 때만 나라장터에 물어본다
+    try {
+      var items = fetchBidByNo_(no);
+      if (items.length) {
+        extractSpecDocs_(items[0]).forEach(function (d) {
+          var lower2 = String(d.name).toLowerCase();
+          var ext = lower2.replace(/^.*\./, '');
           out.files.push({
-            name: f.name,
-            ext: f.ext,
-            where: 'drive',
-            readable: isReadableExt_(f.ext),
-            excluded: isExcludedBriefName_(lower),
-            note: attachmentNote_(f.ext, isExcludedBriefName_(lower)),
-            url: f.file.getUrl()
+            name: d.name,
+            ext: ext,
+            where: 'remote',
+            readable: isReadableExt_(ext),
+            excluded: isExcludedBriefName_(lower2),
+            note: attachmentNote_(ext, isExcludedBriefName_(lower2)),
+            url: d.url
           });
         });
       }
+    } catch (e2) {
+      if (!out.error) out.error = String(e2.message || e2);
     }
-  } catch (e) {
-    if (!out.error) out.error = String(e.message || e);
   }
 
   out.hasReadable = out.files.some(function (f) { return f.readable && !f.excluded; });

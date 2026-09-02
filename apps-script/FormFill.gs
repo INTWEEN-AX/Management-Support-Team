@@ -57,13 +57,34 @@ function classifyFormName_(name) {
 }
 
 /**
+ * 표 검사 결과를 캐시한다.
+ * 압축을 풀고 XML 을 파싱하는 비용이 커서 화면을 열 때마다 하면 몇 초씩 걸린다.
+ * 파일 ID + 수정시각을 키로 쓰므로, 파일이 바뀌면 자동으로 다시 검사한다.
+ */
+function scanHwpxTablesCached_(file) {
+  var key = 'tbl_' + file.getId() + '_' + file.getLastUpdated().getTime();
+  var cache = CacheService.getScriptCache();
+
+  var hit = cache.get(key);
+  if (hit) {
+    try { return JSON.parse(hit); } catch (e) { /* 깨졌으면 다시 검사 */ }
+  }
+
+  var found = scanHwpxTables_(file);
+  try {
+    cache.put(key, JSON.stringify(found), 6 * 60 * 60);   // 6시간
+  } catch (e) {
+    Logger.log('표 검사 캐시 저장 실패(무시): ' + e);
+  }
+  return found;
+}
+
+/**
  * hwpx 안의 표를 실제로 열어보고 무엇을 채울 수 있는 서식인지 판정한다.
  *
  * 파일 이름만으로는 알 수 없다. 관공서 제안요청서는 본문 뒤에 [별지 서식]이
  * 붙어 있는 경우가 많아서, 이름이 '제안요청서' 여도 안에 실적표·인력표가 들어 있다.
  * 그래서 머리글을 직접 읽어 판정한다.
- *
- * 반환: [{ kind, label, rows, cols, headers }]
  */
 function scanHwpxTables_(file) {
   var found = [];
@@ -182,7 +203,7 @@ function getRequiredForms(bidNo, bidOrd) {
 
     if (f.ext === 'hwpx' && fileId) {
       try {
-        tables = scanHwpxTables_(DriveApp.getFileById(fileId));
+        tables = scanHwpxTablesCached_(DriveApp.getFileById(fileId));
       } catch (e) {
         Logger.log('표 검사 건너뜀: ' + f.name + ' — ' + e);
       }
@@ -216,6 +237,7 @@ function getRequiredForms(bidNo, bidOrd) {
   });
 
   // ② 공고문 목차 = 실물 없이 이름만 언급된 것
+  //    (이미 뽑아둔 _본문.txt 가 있을 때만 본다 — 여기서 새로 추출하지 않는다)
   var brief = '';
   try {
     var bid = findBidRecord_(bidNo, bidOrd);
