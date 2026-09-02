@@ -245,7 +245,16 @@ function getProposalPack(bidNo, bidOrd) {
   // 올린 문서 중 서식 목차가 가장 많이 나온 것을 제안요청서로 본다
   var rfp = null, forms = [], tables = [], quals = [];
   var qualSeen = {};
+  var packStarted = Date.now();
+  var skipped = [];
+
   uploads.forEach(function (u) {
+    // 남은 시간이 없으면 나머지는 건너뛴다. 통째로 실패하는 것보다 낫다.
+    if (Date.now() - packStarted > PACK_BUDGET_MS) {
+      u.skipped = true;
+      skipped.push(u.name);
+      return;
+    }
     try {
       var an = analyzeHwpxCached_(DriveApp.getFileById(u.fileId));
       u.formCount = an.forms.length;
@@ -291,6 +300,7 @@ function getProposalPack(bidNo, bidOrd) {
     forms: forms,
     tables: tables,
     quals: quals.sort(function (a, b) { return (b.numeric ? 1 : 0) - (a.numeric ? 1 : 0); }),
+    skipped: skipped,
     summary: {
       total: forms.length,
       fillable: forms.filter(function (f) { return f.fillable; }).length,
@@ -390,7 +400,8 @@ function analyzeHwpxCached_(file) {
   return out;
 }
 
-var HWPX_SCAN_BUDGET_MS = 90 * 1000;   // 표 검사에 쓸 최대 시간
+var HWPX_SCAN_BUDGET_MS = 45 * 1000;   // 파일 하나의 표 검사에 쓸 최대 시간
+var PACK_BUDGET_MS = 180 * 1000;       // 여러 파일을 합쳐 쓸 최대 시간
 var HWPX_MAX_TABLES = 60;              // 이보다 많으면 앞쪽만 본다
 
 /** XML 이스케이프 되돌리기 (정규식으로 뽑은 텍스트용) */

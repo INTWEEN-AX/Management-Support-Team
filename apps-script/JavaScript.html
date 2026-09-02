@@ -1228,6 +1228,9 @@
         '건, 채울 수 있는 표 ' + (res.tables || []).length + '개를 찾았습니다.</span>';
     }
 
+    if ((res.skipped || []).length) {
+      toast('시간이 모자라 ' + res.skipped.length + '개 파일을 건너뛰었습니다. 목록 새로고침을 눌러주세요.');
+    }
     renderQualifications(res.quals || []);
     renderFormIndex(res);
 
@@ -1414,7 +1417,6 @@
 
     renderPerfList();
     renderProposePeople(res.requirement);
-    renderBrief(res.brief);
     renderProposeSelected();
   }
 
@@ -1502,17 +1504,6 @@
     });
   }
 
-  function renderBrief(brief) {
-    // 공고문 본문 영역은 선택 사항이다 (지금 화면에는 없다)
-    const sec = document.getElementById('brief-section');
-    if (!sec) return;
-    if (!brief || !brief.text) { sec.style.display = 'none'; return; }
-    briefText = brief.text;
-    sec.style.display = '';
-    document.getElementById('brief-meta').textContent =
-      brief.chars.toLocaleString() + '자 · ' + brief.source;
-    document.getElementById('brief-text').textContent = brief.text;
-  }
 
   function renderProposeSelected() {
     const parts = [];
