@@ -44,6 +44,7 @@ function onOpen() {
     .addItem('실적 매칭 시험', 'testBidMatching')
     .addItem('공고문 본문 추출 시험', 'testBidBrief')
     .addItem('회사정보 시트 만들기', 'setupCompanySheet')
+    .addItem('보유 서류에서 회사정보 가져오기', 'importCompanyFromDocuments')
     .addItem('회사정보 확인', 'checkCompanyInfo')
     .addItem('마감일시 필드 진단', 'debugBidRaw')
     .addSeparator()

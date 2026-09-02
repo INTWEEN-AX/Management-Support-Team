@@ -214,6 +214,205 @@ function setupCompanySheet() {
     '인력현황 시트에서 자동으로 채워집니다.');
 }
 
+// ─────────────────────────────────────────────────────────────
+// 보유 서류에서 회사정보 자동 추출
+//
+// 사업자등록증·중소기업확인서·신용평가등급확인서에 대부분의 값이 이미 있다.
+// 사람이 옮겨 적을 이유가 없으므로 문서를 읽어 시트를 채운다.
+// ─────────────────────────────────────────────────────────────
+
+/** 어떤 서류에서 무엇을 뽑을지 */
+var COMPANY_SOURCES = [
+  { match: ['사업자등록증'],            parse: 'parseBizLicense_' },
+  { match: ['중소기업확인', '중기업'],   parse: 'parseSmeCert_' },
+  { match: ['신용평가', '신용등급'],     parse: 'parseCreditReport_' }
+];
+
+/** 사업자등록증 */
+function parseBizLicense_(t) {
+  var out = {};
+  var m;
+
+  if ((m = t.match(/등록번호\s*[:：]?\s*(\d{3}-\d{2}-\d{5})/))) out['사업자등록번호'] = m[1];
+  if ((m = t.match(/법인등록번호\s*[:：]?\s*(\d{6}-\d{7})/)))   out['법인등록번호'] = m[1];
+  if ((m = t.match(/법인명\(단체명\)\s*[:：]?\s*([^\n]{2,40})/))) out['회사명'] = m[1].trim();
+
+  // '개 업 연 월 일 : 2018 년 02 월 22 일' — 글자 사이 공백이 흔하다
+  if ((m = t.match(/개\s*업\s*연\s*월\s*일\s*[:：]?\s*(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/))) {
+    out['설립일'] = m[1] + '-' + padNum_(m[2]) + '-' + padNum_(m[3]);
+  }
+
+  if ((m = t.match(/사\s*업\s*장\s*소\s*재\s*지\s*[:：]?\s*([\s\S]{5,140}?)(?:본\s*점|사\s*업\s*의)/))) {
+    out['주소'] = m[1].replace(/\s+/g, ' ').trim();
+  }
+  return out;
+}
+
+/** 중소기업 확인서 */
+function parseSmeCert_(t) {
+  var out = {};
+  var m;
+  if ((m = t.match(/중소기업\s*확인서\s*\[\s*([^\]]{2,10})\s*\]/))) {
+    out['기업규모'] = '중소기업(' + m[1].trim() + ')';
+  }
+  if (!out['기업규모'] && /중소기업/.test(t)) out['기업규모'] = '중소기업';
+  if ((m = t.match(/사업자등록번호\s*[:：]?\s*(\d{3}-\d{2}-\d{5})/))) out['사업자등록번호'] = m[1];
+  if ((m = t.match(/법인등록번호\s*[:：]?\s*(\d{6}-\d{7})/)))       out['법인등록번호'] = m[1];
+  if ((m = t.match(/대표자명?\s*[:：]?\s*([가-힣]{2,5})/)))          out['대표자'] = m[1];
+  return out;
+}
+
+/** 기업신용평가등급 확인서 — 등급과 재무까지 나온다 */
+function parseCreditReport_(t) {
+  var out = {};
+  var m;
+
+  var grade = t.match(/\b(e-\d{1,2})\b/);
+  var band = t.match(/\b(AAA|AA|BBB|BB0|BB|CCC|CC|A|B|C|D)\b/);
+  if (grade) out['신용평가등급'] = grade[1] + (band ? '(' + band[1] + ')' : '');
+  if (/나이스디앤비/.test(t)) out['신용평가기관'] = '(주)나이스디앤비';
+  if ((m = t.match(/종업원\s*(\d+)\s*명/))) out['상시근로자수'] = m[1] + '명';
+  if ((m = t.match(/대표자\s*([가-힣]{2,5})/))) out['대표자'] = m[1];
+  if ((m = t.match(/(?:법인설립일|사업시작일)\s*(\d{4})[\/.\-](\d{1,2})[\/.\-](\d{1,2})/))) {
+    out['설립일'] = m[1] + '-' + padNum_(m[2]) + '-' + padNum_(m[3]);
+  }
+
+  // 연도별 재무 (단위: 백만원)
+  //   2025/12  총자산 자본금 자기자본 매출액 영업이익 당기순이익
+  var re = /(\d{4})\/(\d{2})\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)\s+(-?[\d,]+)\s+(-?[\d,]+)/g;
+  var rows = [], r;
+  while ((r = re.exec(t)) !== null) {
+    rows.push({
+      year: r[1],
+      asset: num_(r[3]), capital: num_(r[4]),
+      equity: num_(r[5]), revenue: num_(r[6])
+    });
+  }
+  if (rows.length) {
+    rows.sort(function (a, b) { return Number(b.year) - Number(a.year); });
+    var latest = rows[0];
+    out['최근 결산연도'] = latest.year;
+    out['최근년도 매출액'] = million_(latest.revenue);
+    out['총자산'] = million_(latest.asset);
+    out['자본금'] = million_(latest.capital);
+
+    var take = rows.slice(0, 3);
+    var avg = take.reduce(function (s, x) { return s + x.revenue; }, 0) / take.length;
+    out['최근 3년 평균 매출액'] = million_(Math.round(avg));
+  }
+  return out;
+}
+
+/** 파서 이름으로 분기 — 전역 참조(this/globalThis)는 Apps Script 에서 불안정하다 */
+function runCompanyParser_(name, text) {
+  if (name === 'parseBizLicense_')   return parseBizLicense_(text);
+  if (name === 'parseSmeCert_')      return parseSmeCert_(text);
+  if (name === 'parseCreditReport_') return parseCreditReport_(text);
+  return {};
+}
+
+function padNum_(v) { return ('0' + v).slice(-2); }
+function num_(s) { return Number(String(s).replace(/,/g, '')) || 0; }
+
+/** 백만원 단위 숫자를 읽기 좋은 원 단위 문자열로 */
+function million_(v) {
+  var won = v * 1000000;
+  return won.toLocaleString() + '원';
+}
+
+/**
+ * 메뉴: 보유 서류에서 회사정보 가져오기
+ * 입찰서류 탭에 등록된 PDF 를 읽어 '회사정보' 탭의 빈 칸을 채운다.
+ * 사람이 적어둔 값은 덮어쓰지 않는다.
+ */
+function importCompanyFromDocuments() {
+  var ui = SpreadsheetApp.getUi();
+
+  var docs;
+  try {
+    docs = getDocumentData();
+  } catch (e) {
+    ui.alert('입찰서류 목록을 읽지 못했습니다.\n\n' + (e.message || e));
+    return;
+  }
+  if (!docs.length) {
+    ui.alert('입찰서류 탭에 등록된 서류가 없습니다.');
+    return;
+  }
+
+  var found = {}, used = [], failed = [];
+
+  COMPANY_SOURCES.forEach(function (src) {
+    var doc = null;
+    for (var i = 0; i < docs.length; i++) {
+      var name = String(docs[i].name || '').replace(/\s+/g, '');
+      if (src.match.some(function (w) { return name.indexOf(w) > -1; })) { doc = docs[i]; break; }
+    }
+    if (!doc || !doc.fileId) return;
+
+    try {
+      var text = pdfToText_(DriveApp.getFileById(doc.fileId));
+      var parsed = runCompanyParser_(src.parse, text);
+      var got = 0;
+      Object.keys(parsed).forEach(function (k) {
+        if (!parsed[k]) return;
+        if (found[k]) return;         // 먼저 읽은 문서를 우선한다
+        found[k] = parsed[k];
+        got++;
+      });
+      used.push(doc.name + ' (' + got + '개)');
+    } catch (e) {
+      failed.push(doc.name + ' — ' + String(e.message || e).split('\n')[0]);
+    }
+  });
+
+  if (!Object.keys(found).length) {
+    ui.alert(
+      '서류에서 값을 읽어내지 못했습니다.\n\n' +
+      (failed.length ? '실패:\n' + failed.join('\n') : '대상 서류를 찾지 못했습니다.'));
+    return;
+  }
+
+  var preview = Object.keys(found).map(function (k) { return '  ' + k + ': ' + found[k]; });
+  var res = ui.alert(
+    '서류에서 읽은 값',
+    used.join('\n') + '\n\n' + preview.join('\n') +
+    (failed.length ? '\n\n읽지 못한 서류:\n' + failed.join('\n') : '') +
+    '\n\n비어 있는 항목만 채웁니다. 직접 적어두신 값은 그대로 둡니다.\n적용할까요?',
+    ui.ButtonSet.YES_NO);
+  if (res !== ui.Button.YES) return;
+
+  var written = writeCompanyValues_(found);
+  ui.alert(
+    '회사정보 ' + written.length + '개 항목을 채웠습니다.\n\n' +
+    (written.length ? written.join('\n') : '') +
+    '\n\n나머지는 회사정보 탭에서 직접 채워주세요.');
+}
+
+/** 회사정보 탭의 빈 칸만 채운다 */
+function writeCompanyValues_(values) {
+  var id = String(PropertiesService.getScriptProperties()
+    .getProperty('COMPANY_SHEET_ID') || '').trim() || HR_SHEET_ID;
+  var ss = SpreadsheetApp.openById(id);
+  var sheet = ss.getSheetByName(COMPANY_TAB);
+  if (!sheet) { setupCompanySheet(); sheet = ss.getSheetByName(COMPANY_TAB); }
+
+  var range = sheet.getDataRange();
+  var rows = range.getValues();
+  var written = [];
+
+  for (var r = 0; r < rows.length; r++) {
+    var label = String(rows[r][0] == null ? '' : rows[r][0]).trim();
+    if (!label || !values[label]) continue;
+    if (String(rows[r][1] == null ? '' : rows[r][1]).trim()) continue;  // 이미 적혀 있으면 둔다
+    rows[r][1] = values[label];
+    written.push('  ' + label + ': ' + values[label]);
+  }
+
+  if (written.length) range.setValues(rows);
+  return written;
+}
+
 /** 메뉴: 회사정보 확인 — 무엇이 비어 있는지 알려준다 */
 function checkCompanyInfo() {
   var info = getCompanyInfo();
