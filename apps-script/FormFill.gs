@@ -59,89 +59,6 @@ function classifyFormName_(name) {
   return { kind: 'unknown', label: '분류 안 됨', source: '확인 필요', matched: '' };
 }
 
-/**
- * 표 검사 결과를 캐시한다.
- * 압축을 풀고 XML 을 파싱하는 비용이 커서 화면을 열 때마다 하면 몇 초씩 걸린다.
- * 파일 ID + 수정시각을 키로 쓰므로, 파일이 바뀌면 자동으로 다시 검사한다.
- */
-function scanHwpxTablesCached_(file) {
-  var key = 'tbl_' + file.getId() + '_' + file.getLastUpdated().getTime();
-  var cache = CacheService.getScriptCache();
-
-  var hit = cache.get(key);
-  if (hit) {
-    try { return JSON.parse(hit); } catch (e) { /* 깨졌으면 다시 검사 */ }
-  }
-
-  var found = scanHwpxTables_(file);
-  try {
-    cache.put(key, JSON.stringify(found), 6 * 60 * 60);   // 6시간
-  } catch (e) {
-    Logger.log('표 검사 캐시 저장 실패(무시): ' + e);
-  }
-  return found;
-}
-
-/**
- * hwpx 안의 표를 실제로 열어보고 무엇을 채울 수 있는 서식인지 판정한다.
- *
- * 파일 이름만으로는 알 수 없다. 관공서 제안요청서는 본문 뒤에 [별지 서식]이
- * 붙어 있는 경우가 많아서, 이름이 '제안요청서' 여도 안에 실적표·인력표가 들어 있다.
- * 그래서 머리글을 직접 읽어 판정한다.
- */
-function scanHwpxTables_(file) {
-  var found = [];
-  try {
-    var entries = Utilities.unzip(file.getBlob().setContentType('application/zip'));
-
-    entries.forEach(function (b) {
-      if (!HWPX_SECTION_RE.test(b.getName())) return;
-      var root = XmlService.parse(b.getDataAsString('UTF-8')).getRootElement();
-
-      findDescendants_(root, 'tbl').forEach(function (tbl) {
-        var trs = tbl.getChildren().filter(function (c) { return c.getName() === 'tr'; });
-        if (trs.length < 2) return;
-
-        var headers = trs[0].getChildren()
-          .filter(function (c) { return c.getName() === 'tc'; })
-          .map(function (tc) { return collectText_(tc); });
-        if (headers.length < 2) return;
-
-        var perfCols = mapColumns_(headers, PERF_COLUMN_MAP);
-        var hrCols = mapColumns_(headers, HR_COLUMN_MAP);
-        var labeled = headers.filter(function (t) { return t; }).length;
-        var need = Math.max(2, Math.ceil(labeled / 2));
-
-        var kind = '';
-        if (countMapped_(perfCols) >= need) kind = 'perf';
-        else if (countMapped_(hrCols) >= need) kind = 'hr';
-        else if (countCompanyLabels_(trs) >= 3) kind = 'company';
-        if (!kind) return;
-
-        // 채울 수 있는 빈 행이 몇 개인지
-        var emptyRows = 0;
-        for (var r = 1; r < trs.length; r++) {
-          var cells = trs[r].getChildren().filter(function (c) { return c.getName() === 'tc'; });
-          if (cells.length && cells.every(function (tc) { return isEmptyCell_(collectText_(tc)); })) {
-            emptyRows++;
-          }
-        }
-
-        found.push({
-          kind: kind,
-          label: kind === 'perf' ? '실적표' : (kind === 'hr' ? '인력표' : '회사정보표'),
-          rows: trs.length,
-          emptyRows: emptyRows,
-          headers: headers.filter(Boolean).slice(0, 8)
-        });
-      });
-    });
-  } catch (e) {
-    Logger.log('hwpx 표 검사 실패(무시): ' + file.getName() + ' — ' + e);
-  }
-  return found;
-}
-
 /** 라벨형 표인지 — 회사정보 라벨이 몇 개나 있는가 */
 function countCompanyLabels_(trs) {
   var n = 0;
@@ -280,151 +197,6 @@ function extractQualifications_(text) {
   // 수치 조건이 있는 문장을 위로
   out.sort(function (a, b) { return (b.numeric ? 1 : 0) - (a.numeric ? 1 : 0); });
   return out.slice(0, 10);
-}
-
-/** 공고문 본문에서 제출서류·붙임 목차로 보이는 줄을 뽑는다 */
-function extractFormMentions_(briefText) {
-  if (!briefText) return [];
-  var out = [], seen = {};
-
-  // '붙임1. 과업지시서', '[서식 3] 참여인력 명부', '○ 사업자등록증 사본' 같은 줄
-  var patterns = [
-    /(?:붙임|별첨|첨부)\s*\d*\s*[.)]?\s*([^\n\r]{3,50})/g,
-    /\[?\s*서식\s*\d*\s*[\]．.)]?\s*([^\n\r]{3,50})/g,
-    /(?:제출서류|구비서류|제출자료)\s*[:：]?\s*([^\n\r]{3,80})/g
-  ];
-
-  patterns.forEach(function (re) {
-    var m;
-    while ((m = re.exec(briefText)) !== null) {
-      var t = String(m[1])
-        .replace(/[·․…\-–—_]{2,}.*$/, '')     // 목차 점선 뒤 페이지번호 제거
-        .replace(/\s*\d+\s*$/, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-      if (t.length < 3 || t.length > 50) continue;
-
-      // 목차가 아니라 본문 문장이 딸려 온 경우를 걸러낸다
-      // 예) '산출내역서 첨부 방법 : 입찰→입찰진행/참가→투찰→…'
-      if (/[→←:：]|하여|합니다|하시기|바랍니다|경우|또는/.test(t)) continue;
-      var key = t.replace(/\s+/g, '');
-      if (seen[key]) continue;
-      seen[key] = true;
-      out.push(t);
-      if (out.length >= 30) return;
-    }
-  });
-  return out;
-}
-
-/**
- * 공고에 필요한 서식 목록.
- * 첨부 파일 자체 + 공고문 목차를 합쳐서 낸다.
- */
-function getRequiredForms(bidNo, bidOrd) {
-  var info = getBidAttachmentInfo(bidNo, bidOrd);
-  var items = [];
-
-  // ① 첨부 파일 = 실물이 있는 서식
-  //    hwpx 는 이름으로 짐작하지 않고 안의 표를 직접 열어본다
-  (info.files || []).forEach(function (f) {
-    var c = classifyFormName_(f.name);
-    var fileId = extractDriveId_(f.url || '');
-    var tables = [];
-
-    if (f.ext === 'hwpx' && fileId) {
-      try {
-        tables = scanHwpxTablesCached_(DriveApp.getFileById(fileId));
-      } catch (e) {
-        Logger.log('표 검사 건너뜀: ' + f.name + ' — ' + e);
-      }
-    }
-
-    // 표가 발견되면 이름 판정보다 우선한다
-    var kind = c.kind, kindLabel = c.label, source = c.source;
-    if (tables.length) {
-      kind = tables[0].kind;
-      kindLabel = { perf: '실적', hr: '인력', company: '회사정보' }[kind] || c.label;
-      source = '문서 안의 표에서 확인';
-    }
-
-    items.push({
-      name: f.name,
-      from: 'attachment',
-      ext: f.ext,
-      kind: kind,
-      kindLabel: kindLabel,
-      source: source,
-      tables: tables,
-      fillable: tables.length > 0,
-      reason: tables.length
-        ? tables.map(function (t) {
-            return t.label + ' (빈 행 ' + t.emptyRows + '개 · ' + t.headers.join(' / ') + ')';
-          }).join(' · ')
-        : formReason_(kind, f.ext),
-      url: f.url,
-      fileId: fileId
-    });
-  });
-
-  // ② 공고문 목차 = 실물 없이 이름만 언급된 것
-  //    (이미 뽑아둔 _본문.txt 가 있을 때만 본다 — 여기서 새로 추출하지 않는다)
-  var brief = '';
-  try {
-    var bid = findBidRecord_(bidNo, bidOrd);
-    var parent = getBidAttachFolder_();
-    var it = parent.getFoldersByName(bidFolderName_(bid));
-    if (it.hasNext()) {
-      var cached = it.next().getFilesByName(BRIEF_CACHE_NAME);
-      if (cached.hasNext()) brief = cached.next().getBlob().getDataAsString('UTF-8');
-    }
-  } catch (e) {
-    Logger.log('본문 캐시 읽기 실패(무시): ' + e);
-  }
-
-  var known = {};
-  items.forEach(function (i) { known[i.name.replace(/\s+/g, '')] = true; });
-
-  extractFormMentions_(brief).forEach(function (t) {
-    if (known[t.replace(/\s+/g, '')]) return;
-    var c = classifyFormName_(t);
-    if (c.kind === 'unknown') return;      // 목차에서 온 건 분류된 것만 신뢰한다
-    items.push({
-      name: t,
-      from: 'brief',
-      ext: '',
-      kind: c.kind,
-      kindLabel: c.label,
-      source: c.source,
-      fillable: false,
-      reason: '공고문에 언급됨 — 실물 서식을 확보해야 채울 수 있습니다',
-      url: '',
-      fileId: ''
-    });
-  });
-
-  // 채워야 하는 서식이 다 준비됐는지 — hwpx 로 올라왔는지 기준
-  var needed = items.filter(function (i) {
-    return ['perf', 'hr', 'company'].indexOf(i.kind) > -1;
-  });
-  var ready = needed.filter(function (i) { return i.fillable; });
-  var pending = needed.filter(function (i) { return !i.fillable; });
-
-  return JSON.parse(JSON.stringify({
-    files: info.files || [],
-    downloaded: info.downloaded,
-    folderUrl: info.folderUrl,
-    items: items,
-    checklist: {
-      needed: needed.length,
-      ready: ready.length,
-      pending: pending.map(function (i) {
-        return { name: i.name, ext: i.ext, kindLabel: i.kindLabel, reason: i.reason };
-      }),
-      complete: needed.length > 0 && pending.length === 0
-    },
-    company: getCompanyInfo()
-  }));
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -582,31 +354,81 @@ function analyzeHwpxCached_(file) {
     try { return JSON.parse(hit); } catch (e) { /* 깨졌으면 다시 */ }
   }
 
-  var out = { forms: [], tables: [], quals: [] };
+  var out = { forms: [], tables: [], quals: [], truncated: false };
+  var started = Date.now();
+
   try {
     var entries = Utilities.unzip(file.getBlob().setContentType('application/zip'));
-    var textParts = [];
-
+    var sections = [];
     entries.forEach(function (b) {
-      if (!HWPX_SECTION_RE.test(b.getName())) return;
-      var root = XmlService.parse(b.getDataAsString('UTF-8')).getRootElement();
-
-      findDescendants_(root, 't').forEach(function (t) { textParts.push(t.getText()); });
-      findDescendants_(root, 'tbl').forEach(function (tbl) {
-        var t = readTableSummary_(tbl);
-        if (t) out.tables.push(t);
-      });
+      if (HWPX_SECTION_RE.test(b.getName())) sections.push(b.getDataAsString('UTF-8'));
     });
 
+    // ① 텍스트 — XML 파서로 트리를 통째로 훑으면 큰 문서에서 실행시간을 다 쓴다.
+    //    본문 글자는 <hp:t> 안에만 있으므로 정규식이면 충분하고 훨씬 빠르다.
+    var textParts = [];
+    sections.forEach(function (xml) {
+      var re = /<hp:t>([\s\S]*?)<\/hp:t>/g, m;
+      while ((m = re.exec(xml)) !== null) textParts.push(unescapeXml_(m[1]));
+    });
     var fullText = textParts.join(' ');
     out.forms = extractFormIndex_(fullText);
     out.quals = extractQualifications_(fullText);
+
+    // ② 표 — 구조가 필요하니 파서를 쓰되, 한 번만 훑고 시간 예산을 둔다
+    for (var i = 0; i < sections.length; i++) {
+      if (Date.now() - started > HWPX_SCAN_BUDGET_MS) { out.truncated = true; break; }
+      var root = XmlService.parse(sections[i]).getRootElement();
+      collectTableSummaries_(root, out.tables, started);
+      if (out.tables.length >= HWPX_MAX_TABLES) { out.truncated = true; break; }
+    }
   } catch (e) {
     Logger.log('hwpx 분석 실패: ' + file.getName() + ' — ' + e);
   }
 
   try { cache.put(key, JSON.stringify(out), 6 * 60 * 60); } catch (e) { /* 무시 */ }
   return out;
+}
+
+var HWPX_SCAN_BUDGET_MS = 90 * 1000;   // 표 검사에 쓸 최대 시간
+var HWPX_MAX_TABLES = 60;              // 이보다 많으면 앞쪽만 본다
+
+/** XML 이스케이프 되돌리기 (정규식으로 뽑은 텍스트용) */
+function unescapeXml_(s) {
+  return String(s)
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+/**
+ * 표를 찾아 요약을 모은다.
+ * 트리를 한 번만 내려가고, 표 안으로는 더 들어가지 않는다 (중첩 표는 드물다).
+ */
+function collectTableSummaries_(element, acc, started) {
+  if (acc.length >= HWPX_MAX_TABLES) return;
+  if (Date.now() - started > HWPX_SCAN_BUDGET_MS) return;
+
+  var children = element.getChildren();
+  for (var i = 0; i < children.length; i++) {
+    var c = children[i];
+    if (c.getName() === 'tbl') {
+      var t = readTableSummary_(c);
+      if (t) acc.push(t);
+      continue;                      // 표 안은 더 파고들지 않는다
+    }
+    collectTableSummaries_(c, acc, started);
+    if (acc.length >= HWPX_MAX_TABLES) return;
+  }
+}
+
+/** 표 요소만 모은다 (표 안으로는 들어가지 않는다) */
+function collectTableElements_(element, acc) {
+  var children = element.getChildren();
+  for (var i = 0; i < children.length; i++) {
+    if (children[i].getName() === 'tbl') { acc.push(children[i]); continue; }
+    collectTableElements_(children[i], acc);
+  }
 }
 
 /** 표 하나를 요약 — 채울 수 있는 종류인지, 빈 행이 몇 개인지 */
@@ -777,7 +599,9 @@ function generateFilledForm(fileId, selection, bidNo, bidOrd) {
     var doc = XmlService.parse(part.getDataAsString('UTF-8'));
     var root = doc.getRootElement();
 
-    findDescendants_(root, 'tbl').forEach(function (tbl) {
+    var tbls = [];
+    collectTableElements_(root, tbls);
+    tbls.forEach(function (tbl) {
       report.tables++;
       fillTable_(tbl, { company: company, perf: perfRows, hr: hrRows }, report);
     });
