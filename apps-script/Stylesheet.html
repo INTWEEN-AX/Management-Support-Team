@@ -1411,6 +1411,43 @@
   .meets.no { color: var(--grey-2); background: var(--grey-5); border: 1px solid var(--border); }
   .pick-row.dim { opacity: .55; }
 
+  /* ── 참가자격 ── */
+  .qual-list {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .qual-item {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: var(--fs-p);
+    line-height: 1.7;
+    color: var(--grey-1);
+  }
+  .qual-item:last-child { border-bottom: none; }
+  .qual-item.key { background: var(--amber-5); }
+  .qual-mark {
+    flex: none;
+    font-size: var(--fs-caption);
+    line-height: 18px;
+    padding: 0 7px;
+    color: var(--amber-1);
+    background: var(--background);
+    border: 1px solid var(--amber-2);
+    border-radius: 2px;
+  }
+  .qual-text { flex: 1; min-width: 0; }
+  .qual-from {
+    flex: none;
+    font-size: var(--fs-caption);
+    color: var(--grey-3);
+    white-space: nowrap;
+  }
+  #step-qual .step-no { background: var(--amber-1); }
+
   /* ── 제안요청서에서 뽑은 서식 목차 ── */
   .form-index {
     border: 1px solid var(--border);

@@ -348,11 +348,21 @@
           <label class="upload-zone" id="upload-zone">
             <input type="file" id="upload-input" multiple accept=".hwpx" hidden>
             <span class="upload-icon">↑</span>
-            <span class="upload-text">제안요청서(RFP) hwpx를 올려주세요</span>
-            <span class="upload-sub">클릭하거나 파일을 끌어다 놓기 · 여러 개 가능</span>
+            <span class="upload-text">제안요청서 · 입찰공고문 hwpx를 올려주세요</span>
+            <span class="upload-sub">제안요청서에 서식 목차가, 입찰공고문에 참가자격이 있습니다</span>
           </label>
           <div class="upload-log" id="upload-log"></div>
           <div class="checklist" id="rfp-status" style="display:none"></div>
+        </section>
+
+        <!-- ── 참가자격 ── -->
+        <section class="step-card" id="step-qual" style="display:none">
+          <div class="step-head">
+            <span class="step-no">!</span>
+            <h3>참가자격 · 실적요건</h3>
+            <span class="step-hint">제출 전에 반드시 확인하세요</span>
+          </div>
+          <div class="qual-list" id="qual-list"></div>
         </section>
 
         <!-- ── 3단계 ── -->

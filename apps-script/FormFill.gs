@@ -229,6 +229,59 @@ function extractFormIndex_(text) {
   return out;
 }
 
+// ─────────────────────────────────────────────────────────────
+// 참가자격 · 실적요건 추출
+//
+// '유사용역 실적 최근 3년간 2건 이상' 같은 조건은 보통 입찰공고문에 있다.
+// 어떤 실적을 낼지 고르기 전에 이 조건부터 봐야 하므로 따로 뽑아 보여준다.
+// ─────────────────────────────────────────────────────────────
+
+/** 자격 요건일 가능성이 높은 문장 (앞쪽일수록 중요) */
+var QUALIFICATION_HINTS = [
+  '유사용역', '유사실적', '동종용역', '수행실적', '납품실적', '실적이 있는',
+  '참가자격', '참가 자격', '자격요건', '면허', '등록증', '제한경쟁',
+  '지역제한', '소재', '중소기업', '여성기업', '장애인기업', '직접생산',
+  '신용평가', '재무상태', '경영상태'
+];
+
+/** 수치 조건이 들어간 문장은 더 중요하다 */
+var QUALIFICATION_NUMERIC = /(\d+)\s*(?:건|년|개월|억|천만|백만|%|퍼센트)\s*이상|이상의\s*실적/;
+
+/**
+ * 본문에서 참가자격·실적요건으로 보이는 문장을 뽑는다.
+ * 반환: [{ text, numeric }]
+ */
+function extractQualifications_(text) {
+  if (!text) return [];
+
+  // 문장 단위로 자른다 (관공서 문서는 ○ ㅇ - 로 항목을 나누는 일이 많다)
+  var chunks = String(text)
+    .replace(/([.。])\s+/g, '$1\n')
+    .split(/\n|[○ㅇ□▣◦·]\s|(?:^|\s)-\s/);
+
+  var out = [], seen = {};
+  chunks.forEach(function (raw) {
+    var t = String(raw).replace(/\s+/g, ' ').trim();
+    if (t.length < 10 || t.length > 160) return;
+
+    var hit = QUALIFICATION_HINTS.some(function (w) { return t.indexOf(w) > -1; });
+    if (!hit) return;
+
+    // 목차 줄('참가자격 ······ 3')은 내용이 없다
+    if (/[·․…]{3,}/.test(t)) return;
+
+    var key = t.replace(/\s+/g, '');
+    if (seen[key]) return;
+    seen[key] = true;
+
+    out.push({ text: t, numeric: QUALIFICATION_NUMERIC.test(t) });
+  });
+
+  // 수치 조건이 있는 문장을 위로
+  out.sort(function (a, b) { return (b.numeric ? 1 : 0) - (a.numeric ? 1 : 0); });
+  return out.slice(0, 10);
+}
+
 /** 공고문 본문에서 제출서류·붙임 목차로 보이는 줄을 뽑는다 */
 function extractFormMentions_(briefText) {
   if (!briefText) return [];
@@ -418,12 +471,23 @@ function getProposalPack(bidNo, bidOrd) {
   }
 
   // 올린 문서 중 서식 목차가 가장 많이 나온 것을 제안요청서로 본다
-  var rfp = null, forms = [], tables = [];
+  var rfp = null, forms = [], tables = [], quals = [];
+  var qualSeen = {};
   uploads.forEach(function (u) {
     try {
       var an = analyzeHwpxCached_(DriveApp.getFileById(u.fileId));
       u.formCount = an.forms.length;
       u.tableCount = an.tables.length;
+      u.qualCount = (an.quals || []).length;
+
+      // 참가자격은 입찰공고문에 있는 경우가 많아 올린 문서 전체에서 모은다
+      (an.quals || []).forEach(function (q) {
+        var k = q.text.replace(/\s+/g, '');
+        if (qualSeen[k]) return;
+        qualSeen[k] = true;
+        q.from = u.name;
+        quals.push(q);
+      });
 
       if (!rfp || an.forms.length > forms.length) {
         rfp = u;
@@ -454,6 +518,7 @@ function getProposalPack(bidNo, bidOrd) {
     rfp: rfp,
     forms: forms,
     tables: tables,
+    quals: quals.sort(function (a, b) { return (b.numeric ? 1 : 0) - (a.numeric ? 1 : 0); }),
     summary: {
       total: forms.length,
       fillable: forms.filter(function (f) { return f.fillable; }).length,
@@ -517,7 +582,7 @@ function analyzeHwpxCached_(file) {
     try { return JSON.parse(hit); } catch (e) { /* 깨졌으면 다시 */ }
   }
 
-  var out = { forms: [], tables: [] };
+  var out = { forms: [], tables: [], quals: [] };
   try {
     var entries = Utilities.unzip(file.getBlob().setContentType('application/zip'));
     var textParts = [];
@@ -533,7 +598,9 @@ function analyzeHwpxCached_(file) {
       });
     });
 
-    out.forms = extractFormIndex_(textParts.join(' '));
+    var fullText = textParts.join(' ');
+    out.forms = extractFormIndex_(fullText);
+    out.quals = extractQualifications_(fullText);
   } catch (e) {
     Logger.log('hwpx 분석 실패: ' + file.getName() + ' — ' + e);
   }

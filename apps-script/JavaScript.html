@@ -1150,6 +1150,7 @@
       '<div class="attach-empty">확인하는 중…</div>';
     document.getElementById('notice-actions').innerHTML = '';
     document.getElementById('notice-hint').textContent = '';
+    document.getElementById('step-qual').style.display = 'none';
     document.getElementById('step-forms').style.display = 'none';
     document.getElementById('step-analyze').style.display = 'none';
     document.getElementById('rfp-status').style.display = 'none';
@@ -1227,11 +1228,26 @@
         '건, 채울 수 있는 표 ' + (res.tables || []).length + '개를 찾았습니다.</span>';
     }
 
+    renderQualifications(res.quals || []);
     renderFormIndex(res);
 
     // 서식이 확인돼야 분석 단계를 연다
     document.getElementById('step-analyze').style.display =
       (res.forms || []).length ? '' : 'none';
+  }
+
+  /** 참가자격 · 실적요건 — 실적을 고르기 전에 봐야 할 조건 */
+  function renderQualifications(quals) {
+    const sec = document.getElementById('step-qual');
+    if (!quals.length) { sec.style.display = 'none'; return; }
+    sec.style.display = '';
+    document.getElementById('qual-list').innerHTML = quals.map(function (q) {
+      return '<div class="qual-item' + (q.numeric ? ' key' : '') + '">' +
+        (q.numeric ? '<span class="qual-mark">조건</span>' : '') +
+        '<span class="qual-text">' + escapeHtml(q.text) + '</span>' +
+        (q.from ? '<span class="qual-from">' + escapeHtml(q.from) + '</span>' : '') +
+      '</div>';
+    }).join('');
   }
 
   const KIND_BADGE = { perf: '실적', hr: '인력', company: '회사정보',
