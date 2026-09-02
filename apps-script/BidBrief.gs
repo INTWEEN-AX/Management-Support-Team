@@ -77,6 +77,39 @@ function getBidBriefMatches(bidNo, bidOrd) {
   }));
 }
 
+/**
+ * 화면에서 [분석 실행] 을 눌렀을 때 도는 한 방 호출.
+ *
+ * 실적은 공고명(제목)만으로 매칭하므로 공고문이 없어도 나온다.
+ * 공고문은 참여인력의 '요구 경력' 을 읽기 위해서만 쓴다.
+ * 읽을 수 있는 첨부가 없으면 공고문 없이 진행하고 그 사실을 알린다.
+ */
+function runProposeAnalysis(bidNo, bidOrd) {
+  var result = getBidMatches(bidNo, bidOrd);   // { bid, field, matches }
+  var briefText = '', briefInfo = null, briefError = '';
+
+  try {
+    var bid = findBidRecord_(bidNo, bidOrd);
+    var brief = extractBidBrief_(bid);
+    briefText = brief.text;
+    briefInfo = { source: brief.source, chars: brief.text.length, text: brief.text };
+  } catch (e) {
+    briefError = String(e.message || e).split('\n')[0];
+  }
+
+  var hr = recommendPeople(briefText);
+
+  return JSON.parse(JSON.stringify({
+    bid: result.bid,
+    field: result.field,
+    matches: result.matches,
+    brief: briefInfo,
+    briefError: briefError,
+    requirement: hr.requirement,
+    people: hr.people
+  }));
+}
+
 /** 캐시(_본문.txt)를 버리고 다시 추출한다 — hwpx 를 새로 올린 뒤 쓴다 */
 function refreshBidBrief(bidNo, bidOrd) {
   var bids = getBidData();

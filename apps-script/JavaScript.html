@@ -1106,18 +1106,22 @@
 
   // ================= 제안자료 만들기 =================
 
-  let proposeBid = null;            // 지금 열려 있는 공고
-  let proposeGen = 0;               // 늦게 도착한 응답을 버리기 위한 세대 번호
-  let proposeMatches = [];          // [{record, scorePct, hits, sameOrg, tier}]
-  let proposeForms = [];            // 필요 서식 목록
-  const selectedPerf = new Set();   // 실적 인덱스
-  const selectedHR = new Set();     // 인력 이름
+  let proposeBid = null;
+  let proposeGen = 0;
+  let proposeMatches = [];
+  let proposeForms = [];
+  let proposePeople = [];
+  let briefText = '';
+  const selectedPerf = new Set();
+  const selectedHR = new Set();
 
   function openPropose(bid) {
     proposeBid = bid;
     proposeGen++;
     proposeMatches = [];
     proposeForms = [];
+    proposePeople = [];
+    briefText = '';
     selectedPerf.clear();
     selectedHR.clear();
 
@@ -1136,97 +1140,22 @@
     if (bid.url) { src.href = bid.url; src.style.display = ''; }
     else { src.style.display = 'none'; }
 
-    document.getElementById('field-verdict').innerHTML = '';
+    // 결과는 [분석 실행] 을 눌러야 나온다 — 공고를 열자마자 공고문을 읽지 않는다
+    document.getElementById('result-grid').style.display = 'none';
     document.getElementById('brief-section').style.display = 'none';
-    document.getElementById('propose-perf-list').innerHTML =
-      '<div class="empty-state">유사 실적을 찾는 중…</div>';
-    document.getElementById('propose-perf-count').textContent = '';
+    document.getElementById('analyze-status').textContent = '아직 실행하지 않았습니다.';
+    document.getElementById('upload-log').innerHTML = '';
+    document.getElementById('checklist').innerHTML = '';
     document.getElementById('forms-list').innerHTML =
-      '<div class="empty-state">공고 첨부를 확인하는 중…</div>';
-    document.getElementById('forms-count').textContent = '확인하는 중…';
+      '<div class="attach-empty">확인하는 중…</div>';
     document.getElementById('forms-actions').innerHTML = '';
-
-    renderProposeHR();
+    document.getElementById('source-hint').textContent = '';
     renderProposeSelected();
 
-    // 실적 매칭은 공고명(분야 판정)만으로 되므로 즉시 실행된다
-    google.script.run
-      .withSuccessHandler(onMatchesLoaded)
-      .withFailureHandler(onMatchFail)
-      .getBidMatches(bid.no, bid.ord);
-
-    // 필요 서식 목록은 첨부·공고문을 읽어야 해서 뒤따라온다
     loadRequiredForms();
   }
 
-  function onMatchFail(err) {
-    document.getElementById('propose-perf-list').innerHTML =
-      '<div class="empty-state">실적 매칭에 실패했습니다.<br>' + escapeHtml(err.message || err) + '</div>';
-  }
-
-  function onMatchesLoaded(res) {
-    proposeMatches = (res && res.matches) || [];
-    renderFieldVerdict(res && res.field);
-
-    const wrap = document.getElementById('propose-perf-list');
-    if (!proposeMatches.length) {
-      wrap.innerHTML = '<div class="empty-state">해당 분야의 실적을 찾지 못했습니다.</div>';
-      return;
-    }
-
-    document.getElementById('propose-perf-count').textContent =
-      proposeMatches.length + '건 — 제출할 것만 고르세요';
-
-    wrap.innerHTML = proposeMatches.map(function (m, i) {
-      const r = m.record;
-      const amount = r.amount ? Math.round(r.amount / 10000).toLocaleString() + '만원' : '-';
-      const hits = (m.hits || []).map(function (h) {
-        return '<span class="hit">' + escapeHtml(h) + '</span>';
-      }).join('');
-
-      return '<label class="pick-row">' +
-        '<input type="checkbox" data-idx="' + i + '">' +
-        '<span class="pick-score">' + m.scorePct + '</span>' +
-        '<span class="pick-main">' +
-          '<span class="pick-title">' + escapeHtml(r.taskName) +
-            (m.sameOrg ? '<span class="same-org">같은 발주처</span>' : '') + '</span>' +
-          '<span class="pick-sub">' + escapeHtml(r.year || '') + ' · ' +
-            escapeHtml(r.field || '') + ' · ' + escapeHtml(r.org || '') + ' · ' + amount + '</span>' +
-          (hits ? '<span class="pick-hits">' + hits + '</span>' : '') +
-        '</span>' +
-      '</label>';
-    }).join('');
-
-    wrap.querySelectorAll('input[type=checkbox]').forEach(function (cb) {
-      cb.addEventListener('change', function () {
-        const idx = Number(cb.dataset.idx);
-        if (cb.checked) selectedPerf.add(idx); else selectedPerf.delete(idx);
-        renderProposeSelected();
-      });
-    });
-  }
-
-  /** 어떤 분야로 판정해서 이 실적들이 나왔는지 */
-  function renderFieldVerdict(field) {
-    const el = document.getElementById('field-verdict');
-    if (!field || !field.field) {
-      el.innerHTML = '<span class="verdict-none">분야를 판정하지 못해 전체 실적을 최신순으로 냅니다.</span>';
-      return;
-    }
-    el.innerHTML =
-      '<span class="verdict-label">판정 분야</span>' +
-      '<span class="verdict-field">' + escapeHtml(field.field) + '</span>' +
-      (field.hits || []).map(function (h) {
-        return '<span class="hit">' + escapeHtml(h) + '</span>';
-      }).join('') +
-      ((field.alternatives || []).length
-        ? '<span class="verdict-alt">함께 봄: ' + escapeHtml(field.alternatives.join(', ')) + '</span>'
-        : '');
-  }
-
-  // ── 필요 서식 ──
-
-  const FORM_KIND_ORDER = ['perf', 'hr', 'company', 'holding', 'writing', 'unknown'];
+  // ── 1단계: 자료 목록 ──
 
   function loadRequiredForms() {
     const gen = proposeGen;
@@ -1240,129 +1169,331 @@
       })
       .withFailureHandler(function (err) {
         if (gen !== proposeGen) return;
-        document.getElementById('forms-count').textContent = '';
         document.getElementById('forms-list').innerHTML =
-          '<div class="empty-state">서식 목록을 불러오지 못했습니다.<br>' +
+          '<div class="attach-empty">자료를 불러오지 못했습니다.<br>' +
           escapeHtml(err.message || err) + '</div>';
-        renderFormsActions({ downloaded: false });
       })
       .getRequiredForms(bid.no, bid.ord);
   }
 
+  const FORM_KIND_ORDER = ['perf', 'hr', 'company', 'holding', 'writing', 'unknown'];
+  const EXT_ICON = { hwpx: '◆', pdf: '▣', hwp: '◇', zip: '▤' };
+
   function renderForms(res) {
-    const list = document.getElementById('forms-list');
-    const items = res.items || [];
-
-    const folder = document.getElementById('attach-folder');
-    if (res.folderUrl) { folder.href = res.folderUrl; folder.style.display = ''; }
-    else { folder.style.display = 'none'; }
-
-    const fillable = items.filter(function (i) { return i.fillable; }).length;
-    document.getElementById('forms-count').textContent =
-      items.length ? items.length + '건 · 생성 가능 ' + fillable + '건' : '';
-
-    if (!items.length) {
-      list.innerHTML = '<div class="empty-state">첨부에서 서식을 찾지 못했습니다.<br>' +
-        '아래에서 첨부를 내려받아 확인해보세요.</div>';
-      renderFormsActions(res);
-      return;
-    }
-
-    items.sort(function (a, b) {
+    const items = (res.items || []).slice().sort(function (a, b) {
       return FORM_KIND_ORDER.indexOf(a.kind) - FORM_KIND_ORDER.indexOf(b.kind);
     });
+    const list = document.getElementById('forms-list');
 
-    list.innerHTML = items.map(function (f, i) {
-      const name = f.url
-        ? '<a href="' + escapeHtml(f.url) + '" target="_blank" rel="noopener">' + escapeHtml(f.name) + '</a>'
-        : escapeHtml(f.name);
-      return '<div class="form-row kind-' + f.kind + (f.fillable ? ' fillable' : '') + '">' +
-        '<span class="form-kind">' + escapeHtml(f.kindLabel) + '</span>' +
-        '<span class="form-main">' +
-          '<span class="form-name">' + name +
-            (f.from === 'brief' ? '<span class="from-brief">공고문 언급</span>' : '') + '</span>' +
-          '<span class="form-reason">' + escapeHtml(f.reason) + '</span>' +
-        '</span>' +
-        '<span class="form-flag">' + (f.fillable ? '생성 가능' : '—') + '</span>' +
-      '</div>';
-    }).join('');
+    document.getElementById('source-hint').textContent =
+      items.length ? items.length + '건' : '';
 
-    renderFormsActions(res);
-  }
+    list.innerHTML = items.length
+      ? items.map(function (f) {
+          const cls = f.fillable ? 'readable' : (f.ext === 'hwp' ? 'unreadable' : 'excluded');
+          const name = f.url
+            ? '<a href="' + escapeHtml(f.url) + '" target="_blank" rel="noopener">' + escapeHtml(f.name) + '</a>'
+            : escapeHtml(f.name);
+          return '<div class="attach-row ' + cls + '">' +
+            '<span class="attach-icon">' + (EXT_ICON[f.ext] || '▪') + '</span>' +
+            '<span class="attach-name">' + name +
+              (f.from === 'brief' ? '<span class="from-brief">공고문 언급</span>' : '') + '</span>' +
+            '<span class="attach-note">' + escapeHtml(f.kindLabel) + '</span>' +
+          '</div>';
+        }).join('')
+      : '<div class="attach-empty">첨부를 아직 내려받지 않았습니다.</div>';
 
-  function renderFormsActions(res) {
     const box = document.getElementById('forms-actions');
     box.innerHTML = '';
-
     if (!res.downloaded) {
-      addAction(box, 'btn-primary', '첨부 내려받기', downloadAttachments);
+      addAction(box, 'btn-primary', '나라장터 첨부 가져오기', downloadAttachments);
+    } else {
+      if (res.folderUrl) addLink(box, 'btn-ghost', '폴더 열기', res.folderUrl);
+      addAction(box, 'btn-ghost', '다시 확인', loadRequiredForms);
+    }
+
+    renderChecklist(res.checklist || {});
+  }
+
+  /** 이 공고에 필요한 서식이 다 준비됐는지 */
+  function renderChecklist(c) {
+    const el = document.getElementById('checklist');
+    if (!c.needed) {
+      el.className = 'checklist';
+      el.innerHTML = '<span class="check-icon neutral">–</span>' +
+        '<span>채워야 할 서식(실적·인력·회사정보)을 찾지 못했습니다. ' +
+        '직접 올리거나 그대로 분석을 진행해도 됩니다.</span>';
       return;
     }
-    if (res.folderUrl) {
-      const a = document.createElement('a');
-      a.className = 'btn-ghost';
-      a.href = res.folderUrl;
-      a.target = '_blank';
-      a.rel = 'noopener';
-      a.textContent = '폴더 열기';
-      box.appendChild(a);
+    if (c.complete) {
+      el.className = 'checklist ok';
+      el.innerHTML = '<span class="check-icon ok">✓</span>' +
+        '<span>필요한 서식 ' + c.ready + '건이 모두 hwpx로 준비됐습니다.</span>';
+      return;
     }
-    addAction(box, 'btn-ghost', '다시 확인', loadRequiredForms);
-
-    // hwp 만 있으면 변환을 요청한다 — hwpx 가 아니면 채울 수 없다
-    const hwps = (res.items || []).filter(function (f) {
-      return f.ext === 'hwp' && ['perf', 'hr', 'company'].indexOf(f.kind) > -1;
-    });
-    if (hwps.length) {
-      const note = document.createElement('div');
-      note.className = 'convert-note';
-      note.innerHTML =
-        '<b>채울 수 있는 서식이 .hwp 로 되어 있습니다.</b><br>' +
-        '한컴오피스에서 <b>다른 이름으로 저장 → .hwpx</b> 로 바꿔 같은 폴더에 올린 뒤 ' +
-        '<b>다시 확인</b>을 눌러주세요.' +
-        '<div class="block-files">' + hwps.map(function (f) {
-          return '<span class="block-file">' + escapeHtml(f.name) + '</span>';
-        }).join('') + '</div>';
-      box.appendChild(note);
-    }
+    el.className = 'checklist warn';
+    el.innerHTML =
+      '<span class="check-icon warn">!</span>' +
+      '<span><b>' + c.ready + ' / ' + c.needed + '건 준비됨</b> — 아래 서식을 hwpx로 올려주세요.' +
+      '<span class="check-pending">' + c.pending.map(function (p) {
+        return '<span class="block-file">' + escapeHtml(p.name) +
+               (p.ext ? ' (.' + escapeHtml(p.ext) + ')' : '') + '</span>';
+      }).join('') + '</span></span>';
   }
 
   function addAction(parent, cls, label, onClick) {
     const b = document.createElement('button');
-    b.type = 'button';
-    b.className = cls;
-    b.textContent = label;
+    b.type = 'button'; b.className = cls; b.textContent = label;
     b.addEventListener('click', onClick);
     parent.appendChild(b);
   }
 
+  function addLink(parent, cls, label, href) {
+    const a = document.createElement('a');
+    a.className = cls; a.href = href; a.target = '_blank'; a.rel = 'noopener';
+    a.textContent = label;
+    parent.appendChild(a);
+  }
+
   function downloadAttachments() {
     const gen = proposeGen;
-    const bid = proposeBid;
     document.getElementById('forms-list').innerHTML =
-      '<div class="empty-state">첨부를 드라이브로 내려받는 중…</div>';
+      '<div class="attach-empty">나라장터에서 가져오는 중…</div>';
     document.getElementById('forms-actions').innerHTML = '';
 
     google.script.run
-      .withSuccessHandler(function () {
-        if (gen !== proposeGen) return;
-        loadRequiredForms();
-      })
+      .withSuccessHandler(function () { if (gen === proposeGen) loadRequiredForms(); })
       .withFailureHandler(function (err) {
         if (gen !== proposeGen) return;
         document.getElementById('forms-list').innerHTML =
-          '<div class="empty-state">첨부를 내려받지 못했습니다.<br>' +
+          '<div class="attach-empty">가져오지 못했습니다.<br>' +
           escapeHtml(err.message || err) + '</div>';
       })
-      .downloadBidAttachments(bid.no, bid.ord);
+      .downloadBidAttachments(proposeBid.no, proposeBid.ord);
   }
 
-  // ── 서식 생성 ──
+  // ── 서식 직접 올리기 ──
+
+  function initUpload() {
+    const zone = document.getElementById('upload-zone');
+    const input = document.getElementById('upload-input');
+
+    input.addEventListener('change', function () {
+      handleFiles(Array.prototype.slice.call(input.files));
+      input.value = '';
+    });
+
+    ['dragenter', 'dragover'].forEach(function (ev) {
+      zone.addEventListener(ev, function (e) {
+        e.preventDefault(); zone.classList.add('over');
+      });
+    });
+    ['dragleave', 'drop'].forEach(function (ev) {
+      zone.addEventListener(ev, function (e) {
+        e.preventDefault(); zone.classList.remove('over');
+      });
+    });
+    zone.addEventListener('drop', function (e) {
+      handleFiles(Array.prototype.slice.call(e.dataTransfer.files));
+    });
+  }
+
+  function handleFiles(files) {
+    if (!proposeBid) return toast('공고를 먼저 열어주세요.');
+    files.forEach(function (file) {
+      if (/\.hwp$/i.test(file.name)) {
+        logUpload(file.name, 'fail',
+          '.hwp 는 채울 수 없습니다 — 한컴에서 hwpx 로 저장해 올려주세요');
+        return;
+      }
+      logUpload(file.name, 'busy', '올리는 중…');
+
+      const reader = new FileReader();
+      reader.onload = function () {
+        const b64 = String(reader.result).split(',')[1] || '';
+        google.script.run
+          .withSuccessHandler(function () {
+            logUpload(file.name, 'ok', '올렸습니다');
+            loadRequiredForms();
+          })
+          .withFailureHandler(function (err) {
+            logUpload(file.name, 'fail', String(err.message || err).split('\n')[0]);
+          })
+          .uploadFormFile({
+            bidNo: proposeBid.no, bidOrd: proposeBid.ord,
+            name: file.name, mimeType: file.type, dataBase64: b64
+          });
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function logUpload(name, state, msg) {
+    const log = document.getElementById('upload-log');
+    const id = 'up_' + name.replace(/[^a-zA-Z0-9]/g, '');
+    let row = document.getElementById(id);
+    if (!row) {
+      row = document.createElement('div');
+      row.id = id;
+      log.appendChild(row);
+    }
+    row.className = 'upload-row ' + state;
+    row.innerHTML = '<span class="upload-name">' + escapeHtml(name) + '</span>' +
+                    '<span class="upload-msg">' + escapeHtml(msg) + '</span>';
+  }
+
+  // ── 2단계: 분석 ──
+
+  function runAnalyze() {
+    const gen = proposeGen;
+    const btn = document.getElementById('run-analyze');
+    btn.disabled = true;
+    document.getElementById('analyze-status').textContent =
+      '분석하는 중… (공고문을 처음 읽을 때는 시간이 걸립니다)';
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (gen !== proposeGen) return;
+        btn.disabled = false;
+        onAnalyzed(res);
+      })
+      .withFailureHandler(function (err) {
+        if (gen !== proposeGen) return;
+        btn.disabled = false;
+        document.getElementById('analyze-status').textContent =
+          '분석 실패 — ' + String(err.message || err).split('\n')[0];
+      })
+      .runProposeAnalysis(proposeBid.no, proposeBid.ord);
+  }
+
+  function onAnalyzed(res) {
+    proposeMatches = res.matches || [];
+    proposePeople = res.people || [];
+    selectedPerf.clear();
+    selectedHR.clear();
+
+    document.getElementById('result-grid').style.display = '';
+    document.getElementById('analyze-status').textContent =
+      [res.field && res.field.field ? '분야 ' + res.field.field : '',
+       '실적 ' + proposeMatches.length + '건',
+       res.brief ? '공고문 ' + res.brief.chars.toLocaleString() + '자 (' + res.brief.source + ')'
+                 : (res.briefError ? '공고문 없음 — ' + res.briefError : '')]
+      .filter(Boolean).join(' · ');
+
+    renderPerfList();
+    renderProposePeople(res.requirement);
+    renderBrief(res.brief);
+    renderProposeSelected();
+  }
+
+  function renderPerfList() {
+    const wrap = document.getElementById('propose-perf-list');
+    if (!proposeMatches.length) {
+      wrap.innerHTML = '<div class="empty-state">제목이 겹치는 실적이 없습니다.<br>' +
+        '해본 적 없는 분야의 공고일 수 있습니다.</div>';
+      document.getElementById('propose-perf-count').textContent = '';
+      return;
+    }
+    document.getElementById('propose-perf-count').textContent =
+      proposeMatches.length + '건 — 제출할 것만 고르세요';
+
+    wrap.innerHTML = proposeMatches.map(function (m, i) {
+      const r = m.record;
+      const amount = r.amount ? Math.round(r.amount / 10000).toLocaleString() + '만원' : '-';
+      const hits = (m.hits || []).map(function (h) {
+        return '<span class="hit">' + escapeHtml(h) + '</span>';
+      }).join('');
+      const tags = [m.sameOrg ? '<span class="same-org">같은 발주처</span>' : '',
+                    m.sameField ? '<span class="same-field">같은 분야</span>' : ''].join('');
+
+      return '<label class="pick-row">' +
+        '<input type="checkbox" data-idx="' + i + '">' +
+        '<span class="pick-score">' + m.scorePct + '</span>' +
+        '<span class="pick-main">' +
+          '<span class="pick-title">' + escapeHtml(r.taskName) + tags + '</span>' +
+          '<span class="pick-sub">' + escapeHtml(r.year || '') + ' · ' +
+            escapeHtml(r.field || '') + ' · ' + escapeHtml(r.org || '') + ' · ' + amount + '</span>' +
+          (hits ? '<span class="pick-hits">제목 겹침 ' + hits + '</span>' : '') +
+        '</span>' +
+      '</label>';
+    }).join('');
+
+    wrap.querySelectorAll('input[type=checkbox]').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        const idx = Number(cb.dataset.idx);
+        if (cb.checked) selectedPerf.add(idx); else selectedPerf.delete(idx);
+        renderProposeSelected();
+      });
+    });
+  }
+
+  function renderProposePeople(requirement) {
+    const wrap = document.getElementById('propose-hr-list');
+    const q = (document.getElementById('propose-hr-search').value || '').trim().toLowerCase();
+
+    document.getElementById('hr-req').textContent = requirement
+      ? '요구 경력 ' + requirement.years + '년 이상'
+      : '연차 높은 순';
+
+    const list = proposePeople.filter(function (p) {
+      if (!q) return true;
+      return (p.name + ' ' + p.dept + ' ' + p.position).toLowerCase().indexOf(q) > -1;
+    });
+
+    if (!list.length) {
+      wrap.innerHTML = '<div class="empty-state">해당하는 인력이 없습니다.</div>';
+      return;
+    }
+
+    wrap.innerHTML = list.map(function (p) {
+      const checked = selectedHR.has(p.name) ? ' checked' : '';
+      const years = p.months === null ? '-' : (Math.floor(p.months / 12) + '년 ' + (p.months % 12) + '개월');
+      const flag = requirement
+        ? (p.meets ? '<span class="meets ok">충족</span>' : '<span class="meets no">미달</span>')
+        : '';
+      return '<label class="pick-row' + (requirement && !p.meets ? ' dim' : '') + '">' +
+        '<input type="checkbox" data-name="' + escapeHtml(p.name) + '"' + checked + '>' +
+        '<span class="pick-score">' + (p.months === null ? '–' : Math.floor(p.months / 12)) + '</span>' +
+        '<span class="pick-main">' +
+          '<span class="pick-title">' + escapeHtml(p.name) +
+            '<span class="pick-pos">' + escapeHtml(p.position || '') + '</span>' + flag + '</span>' +
+          '<span class="pick-sub">' + escapeHtml(p.dept || '') + ' · 경력 ' + years + '</span>' +
+        '</span>' +
+      '</label>';
+    }).join('');
+
+    wrap.querySelectorAll('input[type=checkbox]').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        if (cb.checked) selectedHR.add(cb.dataset.name); else selectedHR.delete(cb.dataset.name);
+        renderProposeSelected();
+      });
+    });
+  }
+
+  function renderBrief(brief) {
+    const sec = document.getElementById('brief-section');
+    if (!brief || !brief.text) { sec.style.display = 'none'; return; }
+    briefText = brief.text;
+    sec.style.display = '';
+    document.getElementById('brief-meta').textContent =
+      brief.chars.toLocaleString() + '자 · ' + brief.source;
+    document.getElementById('brief-text').textContent = brief.text;
+  }
+
+  function renderProposeSelected() {
+    const parts = [];
+    if (selectedPerf.size) parts.push('실적 ' + selectedPerf.size + '건');
+    if (selectedHR.size) parts.push('인력 ' + selectedHR.size + '명');
+    document.getElementById('propose-selected').textContent =
+      parts.length ? parts.join(' · ') + ' 선택됨' : '선택 없음';
+  }
+
+  // ── 3단계: 서식 생성 ──
 
   function generateForms() {
     const targets = proposeForms.filter(function (f) { return f.fillable && f.fileId; });
     if (!targets.length) {
-      toast('채울 수 있는 hwpx 서식이 없습니다. hwp를 hwpx로 바꿔 올려주세요.');
+      toast('채울 수 있는 hwpx 서식이 없습니다. 1단계에서 hwpx로 올려주세요.');
       return;
     }
     if (!selectedPerf.size && !selectedHR.size) {
@@ -1384,7 +1515,6 @@
 
     const results = [];
     let done = 0;
-
     targets.forEach(function (f) {
       google.script.run
         .withSuccessHandler(function (out) {
@@ -1401,7 +1531,7 @@
 
   function finishGenerate(results, btn) {
     btn.disabled = false;
-    btn.textContent = '서식 생성';
+    btn.textContent = '다음 · 서식 생성';
 
     const ok = results.filter(function (r) { return r.ok; });
     const fail = results.filter(function (r) { return !r.ok; });
@@ -1417,8 +1547,8 @@
           if (rep.hr) bits.push('인력 ' + rep.hr + '행');
           if (rep.company) bits.push('회사정보 ' + rep.company + '칸');
           const over = (rep.overflow || []).map(function (o) {
-            return '⚠ ' + (o.kind === 'perf' ? '실적' : '인력') +
-                   ' ' + o.total + '건 중 ' + o.filled + '건만 들어갔습니다 (표에 빈 행 부족)';
+            return '⚠ ' + (o.kind === 'perf' ? '실적' : '인력') + ' ' + o.total +
+                   '건 중 ' + o.filled + '건만 들어갔습니다 (표에 빈 행 부족)';
           }).join('<br>');
           return '<div class="gen-row">' +
             '<div class="gen-name">' + escapeHtml(r.out.name) + '</div>' +
@@ -1442,60 +1572,8 @@
           : '') +
       '</div>';
 
-    const list = document.getElementById('forms-list');
-    list.insertAdjacentHTML('afterbegin', html);
+    document.getElementById('checklist').insertAdjacentHTML('afterend', html);
     toast(ok.length ? '서식을 생성했습니다.' : '서식 생성에 실패했습니다.');
-  }
-
-  // ── 인력 ──
-
-  function renderProposeHR() {
-    const wrap = document.getElementById('propose-hr-list');
-    const q = (document.getElementById('propose-hr-search').value || '').trim().toLowerCase();
-
-    const list = ALL_HR_RECORDS
-      .filter(function (r) { return String(r.status || '').indexOf('재직') === 0; })
-      .filter(function (r) {
-        if (!q) return true;
-        return (r.name + ' ' + r.dept + ' ' + r.position).toLowerCase().indexOf(q) > -1;
-      })
-      .sort(function (a, b) {
-        return String(a.dept || '').localeCompare(String(b.dept || ''), 'ko') ||
-               String(a.name || '').localeCompare(String(b.name || ''), 'ko');
-      });
-
-    if (!list.length) {
-      wrap.innerHTML = '<div class="empty-state">해당하는 인력이 없습니다.</div>';
-      return;
-    }
-
-    wrap.innerHTML = list.map(function (r) {
-      const checked = selectedHR.has(r.name) ? ' checked' : '';
-      return '<label class="pick-row">' +
-        '<input type="checkbox" data-name="' + escapeHtml(r.name) + '"' + checked + '>' +
-        '<span class="pick-main">' +
-          '<span class="pick-title">' + escapeHtml(r.name) +
-            '<span class="pick-pos">' + escapeHtml(r.position || '') + '</span></span>' +
-          '<span class="pick-sub">' + escapeHtml(r.dept || '') + ' · 경력 ' +
-            escapeHtml(r.career || '-') + '</span>' +
-        '</span>' +
-      '</label>';
-    }).join('');
-
-    wrap.querySelectorAll('input[type=checkbox]').forEach(function (cb) {
-      cb.addEventListener('change', function () {
-        if (cb.checked) selectedHR.add(cb.dataset.name); else selectedHR.delete(cb.dataset.name);
-        renderProposeSelected();
-      });
-    });
-  }
-
-  function renderProposeSelected() {
-    const parts = [];
-    if (selectedPerf.size) parts.push('실적 ' + selectedPerf.size + '건');
-    if (selectedHR.size) parts.push('인력 ' + selectedHR.size + '명');
-    document.getElementById('propose-selected').textContent =
-      parts.length ? parts.join(' · ') + ' 선택됨' : '선택 없음';
   }
 
   // ── 표 복사 ──
@@ -1505,14 +1583,9 @@
     const rows = Array.from(selectedPerf).sort(function (a, b) { return a - b; })
       .map(function (idx, i) {
         const r = proposeMatches[idx].record;
-        return [
-          String(i + 1),
-          r.taskName || '',
-          r.org || '',
+        return [String(i + 1), r.taskName || '', r.org || '',
           r.amount ? Number(r.amount).toLocaleString() : (r.amountRaw || ''),
-          r.contractPeriod || r.contractDate || '',
-          r.desc || ''
-        ];
+          r.contractPeriod || r.contractDate || '', r.desc || ''];
       });
     return [head].concat(rows);
   }
@@ -1522,16 +1595,9 @@
     const rows = ALL_HR_RECORDS
       .filter(function (r) { return selectedHR.has(r.name); })
       .map(function (r, i) {
-        return [
-          String(i + 1),
-          r.name || '',
-          r.dept || '',
-          r.position || '',
+        return [String(i + 1), r.name || '', r.dept || '', r.position || '',
           [r.eduSchool, r.eduDegree].filter(Boolean).join(' '),
-          r.eduMajor || '',
-          r.career || '',
-          r.joinDate || ''
-        ];
+          r.eduMajor || '', r.career || '', r.joinDate || ''];
       });
     return [head].concat(rows);
   }
@@ -1543,8 +1609,7 @@
         return '<tr>' + row.map(function (c) {
           return '<' + tag + ' style="padding:4px 8px">' + escapeHtml(c) + '</' + tag + '>';
         }).join('') + '</tr>';
-      }).join('') +
-    '</table>';
+      }).join('') + '</table>';
   }
 
   function tableToText(rows) {
@@ -1616,8 +1681,11 @@
   }
 
   function initProposeModal() {
-    document.getElementById('propose-hr-search').addEventListener('input', renderProposeHR);
-
+    initUpload();
+    document.getElementById('run-analyze').addEventListener('click', runAnalyze);
+    document.getElementById('propose-hr-search').addEventListener('input', function () {
+      renderProposePeople(null);
+    });
     document.getElementById('copy-perf').addEventListener('click', function () {
       if (!selectedPerf.size) return toast('선택된 실적이 없습니다.');
       copyTables([{ title: '수행실적', rows: perfTable() }]);

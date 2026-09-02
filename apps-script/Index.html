@@ -316,24 +316,76 @@
         <header class="propose-header">
           <h2 id="propose-bid-name">–</h2>
           <div class="propose-meta" id="propose-bid-meta"></div>
-          <div class="field-verdict" id="field-verdict"></div>
         </header>
 
-        <div class="propose-grid">
+        <!-- ── 1단계: 자료 준비 ── -->
+        <section class="step-card" id="step-source">
+          <div class="step-head">
+            <span class="step-no">1</span>
+            <h3>공고 자료 준비</h3>
+            <span class="step-hint" id="source-hint"></span>
+          </div>
 
-          <!-- ─ 왼쪽: 필요 서식 · 공고문 ─ -->
-          <div class="propose-col">
-
-            <section class="propose-section">
-              <div class="propose-head">
-                <h3>필요 서식</h3>
-                <span class="propose-hint" id="forms-count">확인하는 중…</span>
-                <a class="attach-folder" id="attach-folder" href="#" target="_blank" rel="noopener" style="display:none">폴더 열기 →</a>
-              </div>
-              <div class="forms-list" id="forms-list">
-                <div class="empty-state">공고 첨부를 확인하는 중…</div>
+          <div class="source-grid">
+            <div class="source-box">
+              <div class="source-title">나라장터 첨부</div>
+              <div class="source-desc">공고에 붙어 있는 파일을 그대로 가져옵니다.</div>
+              <div class="attach-list" id="forms-list">
+                <div class="attach-empty">확인하는 중…</div>
               </div>
               <div class="forms-actions" id="forms-actions"></div>
+            </div>
+
+            <div class="source-box">
+              <div class="source-title">서식 직접 올리기</div>
+              <div class="source-desc">
+                첨부에 없거나 <b>.hwp</b>인 서식은 <b>.hwpx</b>로 저장해 올려주세요.
+              </div>
+              <label class="upload-zone" id="upload-zone">
+                <input type="file" id="upload-input" multiple accept=".hwpx,.pdf" hidden>
+                <span class="upload-icon">↑</span>
+                <span class="upload-text">클릭하거나 파일을 끌어다 놓으세요</span>
+                <span class="upload-sub">.hwpx 권장 · .hwp는 채울 수 없습니다</span>
+              </label>
+              <div class="upload-log" id="upload-log"></div>
+            </div>
+          </div>
+
+          <div class="checklist" id="checklist"></div>
+        </section>
+
+        <!-- ── 2단계: 분석 ── -->
+        <section class="step-card" id="step-analyze">
+          <div class="step-head">
+            <span class="step-no">2</span>
+            <h3>분석 실행</h3>
+            <span class="step-hint">실적은 공고명으로, 인력은 연차로 추천합니다</span>
+          </div>
+          <div class="analyze-bar">
+            <button type="button" class="btn-primary" id="run-analyze">분석 실행</button>
+            <span class="analyze-status" id="analyze-status">아직 실행하지 않았습니다.</span>
+          </div>
+        </section>
+
+        <div class="propose-grid" id="result-grid" style="display:none">
+          <div class="propose-col">
+            <section class="propose-section">
+              <div class="propose-head">
+                <h3>유사 수행실적</h3>
+                <span class="propose-hint" id="propose-perf-count"></span>
+              </div>
+              <div class="propose-list tall" id="propose-perf-list"></div>
+            </section>
+          </div>
+
+          <div class="propose-col">
+            <section class="propose-section">
+              <div class="propose-head">
+                <h3>참여인력</h3>
+                <span class="propose-hint" id="hr-req"></span>
+                <input type="text" id="propose-hr-search" placeholder="이름 · 부서 검색">
+              </div>
+              <div class="propose-list tall" id="propose-hr-list"></div>
             </section>
 
             <section class="propose-section" id="brief-section" style="display:none">
@@ -343,32 +395,6 @@
               </div>
               <div class="brief-text" id="brief-text"></div>
             </section>
-
-          </div>
-
-          <!-- ─ 오른쪽: 실적 · 인력 ─ -->
-          <div class="propose-col">
-
-            <section class="propose-section">
-              <div class="propose-head">
-                <h3>유사 수행실적</h3>
-                <span class="propose-hint" id="propose-perf-count"></span>
-              </div>
-              <div class="propose-list tall" id="propose-perf-list">
-                <div class="empty-state">불러오는 중…</div>
-              </div>
-            </section>
-
-            <section class="propose-section">
-              <div class="propose-head">
-                <h3>참여인력</h3>
-                <input type="text" id="propose-hr-search" placeholder="이름 · 부서 검색">
-              </div>
-              <div class="propose-list" id="propose-hr-list">
-                <div class="empty-state">불러오는 중…</div>
-              </div>
-            </section>
-
           </div>
         </div>
 
@@ -379,7 +405,7 @@
         <div class="propose-actions">
           <button type="button" class="btn-ghost" id="copy-perf">실적표 복사</button>
           <button type="button" class="btn-ghost" id="copy-hr">인력표 복사</button>
-          <button type="button" class="btn-primary" id="fill-forms">서식 생성</button>
+          <button type="button" class="btn-primary" id="fill-forms">다음 · 서식 생성</button>
         </div>
       </div>
     </div>

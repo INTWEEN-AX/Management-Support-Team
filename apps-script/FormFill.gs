@@ -144,12 +144,61 @@ function getRequiredForms(bidNo, bidOrd) {
     });
   });
 
+  // 채워야 하는 서식이 다 준비됐는지 — hwpx 로 올라왔는지 기준
+  var needed = items.filter(function (i) {
+    return ['perf', 'hr', 'company'].indexOf(i.kind) > -1;
+  });
+  var ready = needed.filter(function (i) { return i.fillable; });
+  var pending = needed.filter(function (i) { return !i.fillable; });
+
   return JSON.parse(JSON.stringify({
     files: info.files || [],
     downloaded: info.downloaded,
     folderUrl: info.folderUrl,
     items: items,
+    checklist: {
+      needed: needed.length,
+      ready: ready.length,
+      pending: pending.map(function (i) {
+        return { name: i.name, ext: i.ext, kindLabel: i.kindLabel, reason: i.reason };
+      }),
+      complete: needed.length > 0 && pending.length === 0
+    },
     company: getCompanyInfo()
+  }));
+}
+
+/**
+ * 웹앱에서 사람이 직접 올린 서식을 공고 폴더에 저장한다.
+ * @param {Object} payload { bidNo, bidOrd, name, mimeType, dataBase64 }
+ */
+function uploadFormFile(payload) {
+  var name = String(payload && payload.name || '').trim();
+  if (!name) throw new Error('파일 이름이 없습니다.');
+
+  if (/\.hwp$/i.test(name)) {
+    throw new Error(
+      '구형 .hwp 는 채울 수 없습니다: ' + name + '\n\n' +
+      '한컴오피스에서 [다른 이름으로 저장] → 파일 형식 hwpx 로 바꾼 뒤 올려주세요.');
+  }
+
+  var bid = findBidRecord_(payload.bidNo, payload.bidOrd);
+  var parent = getBidAttachFolder_();
+  var it = parent.getFoldersByName(bidFolderName_(bid));
+  var folder = it.hasNext() ? it.next() : parent.createFolder(bidFolderName_(bid));
+
+  var bytes = Utilities.base64Decode(String(payload.dataBase64 || ''));
+  var blob = Utilities.newBlob(bytes, payload.mimeType || 'application/octet-stream', name);
+
+  // 같은 이름이 있으면 이전 것을 휴지통으로 (덮어쓰기)
+  var dup = folder.getFilesByName(name);
+  while (dup.hasNext()) dup.next().setTrashed(true);
+
+  var file = folder.createFile(blob);
+  return JSON.parse(JSON.stringify({
+    name: file.getName(),
+    url: file.getUrl(),
+    folderUrl: folder.getUrl()
   }));
 }
 
