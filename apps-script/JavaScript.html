@@ -1206,8 +1206,7 @@
 
     const acts = document.getElementById('notice-actions');
     acts.innerHTML = '';
-    if (!res.downloaded) addAction(acts, 'btn-primary', '나라장터에서 가져오기', downloadAttachments);
-    else addAction(acts, 'btn-ghost', '다시 확인', loadPack);
+    addAction(acts, 'btn-ghost', '목록 새로고침', loadPack);
 
     // 2단계 — 올라온 hwpx 상태
     const status = document.getElementById('rfp-status');
@@ -1288,22 +1287,6 @@
     parent.appendChild(a);
   }
 
-  function downloadAttachments() {
-    const gen = proposeGen;
-    document.getElementById('notice-list').innerHTML =
-      '<div class="attach-empty">나라장터에서 가져오는 중…</div>';
-    document.getElementById('notice-actions').innerHTML = '';
-
-    google.script.run
-      .withSuccessHandler(function () { if (gen === proposeGen) loadPack(); })
-      .withFailureHandler(function (err) {
-        if (gen !== proposeGen) return;
-        document.getElementById('notice-list').innerHTML =
-          '<div class="attach-empty">가져오지 못했습니다.<br>' +
-          escapeHtml(err.message || err) + '</div>';
-      })
-      .downloadBidAttachments(proposeBid.no, proposeBid.ord);
-  }
 
   // ── 서식 직접 올리기 ──
 

@@ -392,39 +392,44 @@ function getRequiredForms(bidNo, bidOrd) {
  */
 function getProposalPack(bidNo, bidOrd) {
   var bid = findBidRecord_(bidNo, bidOrd);
-  var info = getBidAttachmentInfo(bidNo, bidOrd);
 
-  var notice = [], uploads = [];
-  (info.files || []).forEach(function (f) {
-    var entry = {
-      name: f.name,
-      ext: f.ext,
-      url: f.url,
-      fileId: extractDriveId_(f.url || ''),
-      kindLabel: classifyFormName_(f.name).label
-    };
-    if (f.ext === 'hwpx') uploads.push(entry);
-    else notice.push(entry);
-  });
+  // ① 나라장터 첨부 — 목록만 가져온다. 파일은 받지 않는다.
+  //    hwp 가 대부분이라 받아봐야 읽지 못하고, 내려받기+압축해제가 느리기만 하다.
+  var notice = listNoticeAttachmentsCached_(bid.no);
 
-  // 업로드된 hwpx 를 훑어 서식 목차가 가장 많이 나온 문서를 제안요청서로 본다
+  // ② 사람이 올린 파일만 분석 대상
+  var folder = findBidFolder_(bid);
+  var uploads = [];
+  if (folder) {
+    var it = folder.getFiles();
+    while (it.hasNext()) {
+      var f = it.next();
+      var name = f.getName();
+      if (name === BRIEF_CACHE_NAME) continue;
+      if (!/\.hwpx$/i.test(name)) continue;
+      uploads.push({
+        name: name,
+        ext: 'hwpx',
+        url: f.getUrl(),
+        fileId: f.getId(),
+        kindLabel: classifyFormName_(name).label
+      });
+    }
+  }
+
+  // 올린 문서 중 서식 목차가 가장 많이 나온 것을 제안요청서로 본다
   var rfp = null, forms = [], tables = [];
   uploads.forEach(function (u) {
-    if (!u.fileId) return;
     try {
-      var file = DriveApp.getFileById(u.fileId);
-      var text = hwpxToTextCached_(file);
-      var idx = extractFormIndex_(text);
-      var tbl = scanHwpxTablesCached_(file);
+      var an = analyzeHwpxCached_(DriveApp.getFileById(u.fileId));
+      u.formCount = an.forms.length;
+      u.tableCount = an.tables.length;
 
-      u.formCount = idx.length;
-      u.tableCount = tbl.length;
-
-      if (!rfp || idx.length > forms.length) {
+      if (!rfp || an.forms.length > forms.length) {
         rfp = u;
-        forms = idx;
+        forms = an.forms;
       }
-      tbl.forEach(function (t) {
+      an.tables.forEach(function (t) {
         t.fileId = u.fileId;
         t.fileName = u.name;
         tables.push(t);
@@ -445,8 +450,7 @@ function getProposalPack(bidNo, bidOrd) {
     bid: bid,
     notice: notice,
     uploads: uploads,
-    downloaded: info.downloaded,
-    folderUrl: info.folderUrl,
+    folderUrl: folder ? folder.getUrl() : '',
     rfp: rfp,
     forms: forms,
     tables: tables,
@@ -459,22 +463,121 @@ function getProposalPack(bidNo, bidOrd) {
   }));
 }
 
-/** hwpx 본문 텍스트 — 서식 목차를 읽기 위한 것 (캐시) */
-function hwpxToTextCached_(file) {
-  var key = 'txt_' + file.getId() + '_' + file.getLastUpdated().getTime();
+/** 공고 폴더 (없으면 null — 만들지 않는다) */
+function findBidFolder_(bid) {
+  var it = getBidAttachFolder_().getFoldersByName(bidFolderName_(bid));
+  return it.hasNext() ? it.next() : null;
+}
+
+/**
+ * 나라장터 첨부 '목록'만. 파일은 받지 않는다.
+ * 같은 공고를 다시 열 때 API 를 또 치지 않도록 캐시한다.
+ */
+function listNoticeAttachmentsCached_(bidNo) {
+  var key = 'ntc_' + bidNo;
   var cache = CacheService.getScriptCache();
 
   var hit = cache.get(key);
-  if (hit) return hit;
-
-  var text = hwpxToText_(file);
-  try {
-    // 캐시 항목 한도가 100KB 라 목차가 있을 만한 앞부분만 저장한다
-    cache.put(key, text.slice(0, 90000), 6 * 60 * 60);
-  } catch (e) {
-    Logger.log('본문 캐시 저장 실패(무시): ' + e);
+  if (hit) {
+    try { return JSON.parse(hit); } catch (e) { /* 깨졌으면 다시 */ }
   }
-  return text;
+
+  var out = [];
+  try {
+    var items = fetchBidByNo_(bidNo);
+    if (items.length) {
+      extractSpecDocs_(items[0]).forEach(function (d) {
+        var ext = String(d.name).toLowerCase().replace(/^.*\./, '');
+        out.push({
+          name: d.name,
+          ext: ext,
+          url: d.url,
+          kindLabel: classifyFormName_(d.name).label
+        });
+      });
+    }
+  } catch (e) {
+    Logger.log('첨부 목록 조회 실패: ' + e);
+  }
+
+  try { cache.put(key, JSON.stringify(out), 6 * 60 * 60); } catch (e) { /* 무시 */ }
+  return out;
+}
+
+/**
+ * hwpx 를 한 번만 풀어서 본문 텍스트와 표를 함께 얻는다.
+ * 전에는 텍스트용·표용으로 각각 압축을 풀어 같은 일을 두 번 했다.
+ */
+function analyzeHwpxCached_(file) {
+  var key = 'an_' + file.getId() + '_' + file.getLastUpdated().getTime();
+  var cache = CacheService.getScriptCache();
+
+  var hit = cache.get(key);
+  if (hit) {
+    try { return JSON.parse(hit); } catch (e) { /* 깨졌으면 다시 */ }
+  }
+
+  var out = { forms: [], tables: [] };
+  try {
+    var entries = Utilities.unzip(file.getBlob().setContentType('application/zip'));
+    var textParts = [];
+
+    entries.forEach(function (b) {
+      if (!HWPX_SECTION_RE.test(b.getName())) return;
+      var root = XmlService.parse(b.getDataAsString('UTF-8')).getRootElement();
+
+      findDescendants_(root, 't').forEach(function (t) { textParts.push(t.getText()); });
+      findDescendants_(root, 'tbl').forEach(function (tbl) {
+        var t = readTableSummary_(tbl);
+        if (t) out.tables.push(t);
+      });
+    });
+
+    out.forms = extractFormIndex_(textParts.join(' '));
+  } catch (e) {
+    Logger.log('hwpx 분석 실패: ' + file.getName() + ' — ' + e);
+  }
+
+  try { cache.put(key, JSON.stringify(out), 6 * 60 * 60); } catch (e) { /* 무시 */ }
+  return out;
+}
+
+/** 표 하나를 요약 — 채울 수 있는 종류인지, 빈 행이 몇 개인지 */
+function readTableSummary_(tbl) {
+  var trs = tbl.getChildren().filter(function (c) { return c.getName() === 'tr'; });
+  if (trs.length < 2) return null;
+
+  var headers = trs[0].getChildren()
+    .filter(function (c) { return c.getName() === 'tc'; })
+    .map(function (tc) { return collectText_(tc); });
+  if (headers.length < 2) return null;
+
+  var perfCols = mapColumns_(headers, PERF_COLUMN_MAP);
+  var hrCols = mapColumns_(headers, HR_COLUMN_MAP);
+  var labeled = headers.filter(function (t) { return t; }).length;
+  var need = Math.max(2, Math.ceil(labeled / 2));
+
+  var kind = '';
+  if (countMapped_(perfCols) >= need) kind = 'perf';
+  else if (countMapped_(hrCols) >= need) kind = 'hr';
+  else if (countCompanyLabels_(trs) >= 3) kind = 'company';
+  if (!kind) return null;
+
+  var emptyRows = 0;
+  for (var r = 1; r < trs.length; r++) {
+    var cells = trs[r].getChildren().filter(function (c) { return c.getName() === 'tc'; });
+    if (cells.length && cells.every(function (tc) { return isEmptyCell_(collectText_(tc)); })) {
+      emptyRows++;
+    }
+  }
+
+  return {
+    kind: kind,
+    label: kind === 'perf' ? '실적표' : (kind === 'hr' ? '인력표' : '회사정보표'),
+    rows: trs.length,
+    emptyRows: emptyRows,
+    headers: headers.filter(Boolean).slice(0, 8)
+  };
 }
 
 /**
