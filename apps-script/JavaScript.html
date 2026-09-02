@@ -1176,7 +1176,7 @@
       .getRequiredForms(bid.no, bid.ord);
   }
 
-  const FORM_KIND_ORDER = ['perf', 'hr', 'company', 'holding', 'writing', 'unknown'];
+  const FORM_KIND_ORDER = ['perf', 'hr', 'company', 'holding', 'writing', 'reference', 'unknown'];
   const EXT_ICON = { hwpx: '◆', pdf: '▣', hwp: '◇', zip: '▤' };
 
   function renderForms(res) {
@@ -1197,7 +1197,9 @@
           return '<div class="attach-row ' + cls + '">' +
             '<span class="attach-icon">' + (EXT_ICON[f.ext] || '▪') + '</span>' +
             '<span class="attach-name">' + name +
-              (f.from === 'brief' ? '<span class="from-brief">공고문 언급</span>' : '') + '</span>' +
+              (f.from === 'brief' ? '<span class="from-brief">공고문 언급</span>' : '') +
+              (f.reason ? '<span class="attach-reason">' + escapeHtml(f.reason) + '</span>' : '') +
+            '</span>' +
             '<span class="attach-note">' + escapeHtml(f.kindLabel) + '</span>' +
           '</div>';
         }).join('')

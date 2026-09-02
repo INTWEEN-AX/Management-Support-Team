@@ -37,7 +37,10 @@ var FORM_KINDS = [
     words: ['사업자등록증', '법인등기', '인감증명', '납세증명', '완납증명', '4대보험', '보험가입',
             '신용평가', '중소기업확인', '직접생산', '재무제표', '통장사본', '산업재해'] },
   { kind: 'writing', label: '직접작성', source: '담당자 작성',
-    words: ['제안서', '수행계획', '사업계획', '가격제안', '산출내역', '견적', '과업수행계획'] }
+    words: ['제안서', '수행계획', '사업계획', '가격제안', '산출내역', '견적', '과업수행계획'] },
+  { kind: 'reference', label: '읽는 문서', source: '내용 파악용',
+    words: ['입찰공고문', '공고문', '제안요청서', '과업지시서', '과업내용서', '규격서',
+            '안내문', '유의사항', '행동규범', '설명서', '지침'] }
 ];
 
 function classifyFormName_(name) {
@@ -51,6 +54,80 @@ function classifyFormName_(name) {
     }
   }
   return { kind: 'unknown', label: '분류 안 됨', source: '확인 필요', matched: '' };
+}
+
+/**
+ * hwpx 안의 표를 실제로 열어보고 무엇을 채울 수 있는 서식인지 판정한다.
+ *
+ * 파일 이름만으로는 알 수 없다. 관공서 제안요청서는 본문 뒤에 [별지 서식]이
+ * 붙어 있는 경우가 많아서, 이름이 '제안요청서' 여도 안에 실적표·인력표가 들어 있다.
+ * 그래서 머리글을 직접 읽어 판정한다.
+ *
+ * 반환: [{ kind, label, rows, cols, headers }]
+ */
+function scanHwpxTables_(file) {
+  var found = [];
+  try {
+    var entries = Utilities.unzip(file.getBlob().setContentType('application/zip'));
+
+    entries.forEach(function (b) {
+      if (!HWPX_SECTION_RE.test(b.getName())) return;
+      var root = XmlService.parse(b.getDataAsString('UTF-8')).getRootElement();
+
+      findDescendants_(root, 'tbl').forEach(function (tbl) {
+        var trs = tbl.getChildren().filter(function (c) { return c.getName() === 'tr'; });
+        if (trs.length < 2) return;
+
+        var headers = trs[0].getChildren()
+          .filter(function (c) { return c.getName() === 'tc'; })
+          .map(function (tc) { return collectText_(tc); });
+        if (headers.length < 2) return;
+
+        var perfCols = mapColumns_(headers, PERF_COLUMN_MAP);
+        var hrCols = mapColumns_(headers, HR_COLUMN_MAP);
+        var labeled = headers.filter(function (t) { return t; }).length;
+        var need = Math.max(2, Math.ceil(labeled / 2));
+
+        var kind = '';
+        if (countMapped_(perfCols) >= need) kind = 'perf';
+        else if (countMapped_(hrCols) >= need) kind = 'hr';
+        else if (countCompanyLabels_(trs) >= 3) kind = 'company';
+        if (!kind) return;
+
+        // 채울 수 있는 빈 행이 몇 개인지
+        var emptyRows = 0;
+        for (var r = 1; r < trs.length; r++) {
+          var cells = trs[r].getChildren().filter(function (c) { return c.getName() === 'tc'; });
+          if (cells.length && cells.every(function (tc) { return isEmptyCell_(collectText_(tc)); })) {
+            emptyRows++;
+          }
+        }
+
+        found.push({
+          kind: kind,
+          label: kind === 'perf' ? '실적표' : (kind === 'hr' ? '인력표' : '회사정보표'),
+          rows: trs.length,
+          emptyRows: emptyRows,
+          headers: headers.filter(Boolean).slice(0, 8)
+        });
+      });
+    });
+  } catch (e) {
+    Logger.log('hwpx 표 검사 실패(무시): ' + file.getName() + ' — ' + e);
+  }
+  return found;
+}
+
+/** 라벨형 표인지 — 회사정보 라벨이 몇 개나 있는가 */
+function countCompanyLabels_(trs) {
+  var n = 0;
+  trs.forEach(function (tr) {
+    tr.getChildren().forEach(function (tc) {
+      if (tc.getName() !== 'tc') return;
+      if (COMPANY_LABEL_MAP[normLabel_(collectText_(tc))]) n++;
+    });
+  });
+  return n;
 }
 
 /** 공고문 본문에서 제출서류·붙임 목차로 보이는 줄을 뽑는다 */
@@ -74,6 +151,10 @@ function extractFormMentions_(briefText) {
         .replace(/\s+/g, ' ')
         .trim();
       if (t.length < 3 || t.length > 50) continue;
+
+      // 목차가 아니라 본문 문장이 딸려 온 경우를 걸러낸다
+      // 예) '산출내역서 첨부 방법 : 입찰→입찰진행/참가→투찰→…'
+      if (/[→←:：]|하여|합니다|하시기|바랍니다|경우|또는/.test(t)) continue;
       var key = t.replace(/\s+/g, '');
       if (seen[key]) continue;
       seen[key] = true;
@@ -93,19 +174,44 @@ function getRequiredForms(bidNo, bidOrd) {
   var items = [];
 
   // ① 첨부 파일 = 실물이 있는 서식
+  //    hwpx 는 이름으로 짐작하지 않고 안의 표를 직접 열어본다
   (info.files || []).forEach(function (f) {
     var c = classifyFormName_(f.name);
+    var fileId = extractDriveId_(f.url || '');
+    var tables = [];
+
+    if (f.ext === 'hwpx' && fileId) {
+      try {
+        tables = scanHwpxTables_(DriveApp.getFileById(fileId));
+      } catch (e) {
+        Logger.log('표 검사 건너뜀: ' + f.name + ' — ' + e);
+      }
+    }
+
+    // 표가 발견되면 이름 판정보다 우선한다
+    var kind = c.kind, kindLabel = c.label, source = c.source;
+    if (tables.length) {
+      kind = tables[0].kind;
+      kindLabel = { perf: '실적', hr: '인력', company: '회사정보' }[kind] || c.label;
+      source = '문서 안의 표에서 확인';
+    }
+
     items.push({
       name: f.name,
       from: 'attachment',
       ext: f.ext,
-      kind: c.kind,
-      kindLabel: c.label,
-      source: c.source,
-      fillable: (f.ext === 'hwpx') && (c.kind === 'perf' || c.kind === 'hr' || c.kind === 'company'),
-      reason: formReason_(c.kind, f.ext),
+      kind: kind,
+      kindLabel: kindLabel,
+      source: source,
+      tables: tables,
+      fillable: tables.length > 0,
+      reason: tables.length
+        ? tables.map(function (t) {
+            return t.label + ' (빈 행 ' + t.emptyRows + '개 · ' + t.headers.join(' / ') + ')';
+          }).join(' · ')
+        : formReason_(kind, f.ext),
       url: f.url,
-      fileId: extractDriveId_(f.url || '')
+      fileId: fileId
     });
   });
 
