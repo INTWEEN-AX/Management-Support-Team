@@ -306,9 +306,10 @@ function fillFormFromUpload(payload) {
   var perfRows = pickPerfRows_(payload.selection && payload.selection.perfKeys);
   var hrRows = pickHrRows_(payload.selection && payload.selection.hrNames);
   var company = getCompanyInfo();
+  var bidCtx = buildBidContext_(payload.bidNo, payload.bidOrd);
 
   var parts = Utilities.unzip(blobFromUpload_(payload).setContentType('application/zip'));
-  var report = { company: 0, perf: 0, hr: 0, tables: 0,
+  var report = { company: 0, bid: 0, perf: 0, hr: 0, tables: 0,
                  unfilled: [], overflow: [], emptyTables: [], foundTables: [] };
   var out = [];
 
@@ -320,7 +321,7 @@ function fillFormFromUpload(payload) {
     collectTableElements_(doc.getRootElement(), tbls);
     tbls.forEach(function (tbl) {
       report.tables++;
-      fillTable_(tbl, { company: company, perf: perfRows, hr: hrRows }, report);
+      fillTable_(tbl, { company: company, bid: bidCtx, perf: perfRows, hr: hrRows }, report);
     });
 
     out.push(Utilities.newBlob(XmlService.getRawFormat().format(doc),
@@ -350,6 +351,24 @@ function unescapeXml_(s) {
     .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
     .replace(/&amp;/g, '&');
+}
+
+/** 서식에 들어갈 공고 정보 (없으면 빈 값으로 둔다) */
+function buildBidContext_(bidNo, bidOrd) {
+  var ctx = {
+    bidName: '', bidNo: '', bidOrg: '', bidDemandOrg: '',
+    today: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy. MM. dd.')
+  };
+  try {
+    var bid = findBidRecord_(bidNo, bidOrd);
+    ctx.bidName = bid.name || '';
+    ctx.bidNo = bid.no || '';
+    ctx.bidOrg = bid.noticeOrg || bid.demandOrg || '';
+    ctx.bidDemandOrg = bid.demandOrg || bid.noticeOrg || '';
+  } catch (e) {
+    Logger.log('공고 정보 조회 실패(무시): ' + e);
+  }
+  return ctx;
 }
 
 /** hwpx blob → 본문 텍스트 (글자는 <hp:t> 안에만 있다) */
@@ -487,6 +506,20 @@ var COMPANY_LABEL_MAP = {
   '계좌번호': 'accountNo', '예금주': 'accountHolder'
 };
 
+/**
+ * 공고 자체에서 오는 값 (사업명·공고번호·발주처·작성일).
+ * 회사정보와 달리 공고마다 달라지므로 따로 둔다.
+ */
+var BID_LABEL_MAP = {
+  '사업명': 'bidName', '용역명': 'bidName', '공고명': 'bidName', '과업명': 'bidName',
+  '입찰건명': 'bidName', '계약건명': 'bidName', '사업건명': 'bidName', '건명': 'bidName',
+  '공고번호': 'bidNo', '입찰공고번호': 'bidNo',
+  '발주기관': 'bidOrg', '발주처': 'bidOrg', '공고기관': 'bidOrg',
+  '수요기관': 'bidDemandOrg',
+  '작성일': 'today', '작성일자': 'today', '제출일': 'today', '제출일자': 'today',
+  '신청일': 'today', '신청일자': 'today', '년월일': 'today', '일자': 'today'
+};
+
 /** 반복형 표 머리글 → 실적 필드 */
 var PERF_COLUMN_MAP = {
   '연번': '_index', '번호': '_index', '순번': '_index', 'no': '_index',
@@ -537,7 +570,7 @@ function fillTable_(tbl, data, report) {
     fillRepeatTable_(grid, found.row, found.cols, data[found.kind], report, found.kind);
     return;
   }
-  fillLabelTable_(grid, data.company, report);
+  fillLabelTable_(grid, data, report);
 }
 
 /**
@@ -624,25 +657,27 @@ function fillRepeatTable_(grid, headerRow, cols, rows, report, kind) {
 }
 
 /** 라벨 오른쪽(없으면 아래) 빈 칸에 회사정보를 넣는다 */
-function fillLabelTable_(grid, company, report) {
+function fillLabelTable_(grid, ctx, report) {
   for (var r = 0; r < grid.length; r++) {
     for (var c = 0; c < grid[r].length; c++) {
       var text = collectText_(grid[r][c]);
       if (!text) continue;
 
-      var field = COMPANY_LABEL_MAP[normLabel_(text)];
-      if (!field) continue;
-      var value = company[field];
+      var key = normLabel_(text);
+      var value = '';
+      var bucket = 'company';
+      if (COMPANY_LABEL_MAP[key]) value = ctx.company[COMPANY_LABEL_MAP[key]];
+      else if (BID_LABEL_MAP[key]) { value = ctx.bid[BID_LABEL_MAP[key]]; bucket = 'bid'; }
       if (!value) continue;
 
       // 오른쪽 칸
       if (c + 1 < grid[r].length && isEmptyCell_(collectText_(grid[r][c + 1]))) {
-        if (setCellText_(grid[r][c + 1], String(value))) { report.company++; continue; }
+        if (setCellText_(grid[r][c + 1], String(value))) { report[bucket]++; continue; }
       }
       // 아래 칸 (세로형 표)
       if (r + 1 < grid.length && c < grid[r + 1].length &&
           isEmptyCell_(collectText_(grid[r + 1][c]))) {
-        if (setCellText_(grid[r + 1][c], String(value))) { report.company++; continue; }
+        if (setCellText_(grid[r + 1][c], String(value))) { report[bucket]++; continue; }
       }
       report.unfilled.push(text);
     }

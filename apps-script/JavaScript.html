@@ -1619,7 +1619,8 @@
           if (++done === targets.length) finishGenerate(results, btn);
         })
         .fillFormFromUpload({
-          name: u.name, dataBase64: u.dataBase64, selection: selection
+          name: u.name, dataBase64: u.dataBase64, selection: selection,
+          bidNo: proposeBid.no, bidOrd: proposeBid.ord
         });
     });
   }
@@ -1660,6 +1661,7 @@
           if (rep.perf) bits.push('실적 ' + rep.perf + '행');
           if (rep.hr) bits.push('인력 ' + rep.hr + '행');
           if (rep.company) bits.push('회사정보 ' + rep.company + '칸');
+          if (rep.bid) bits.push('공고정보 ' + rep.bid + '칸');
 
           const warns = (rep.overflow || []).map(function (o) {
             return '⚠ ' + (o.kind === 'perf' ? '실적' : '인력') + ' ' + o.total +
