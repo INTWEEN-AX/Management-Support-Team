@@ -21,67 +21,83 @@ var COMPANY_TAB = '회사정보';
  *   label  시트 A열에 적히는 항목명 (서식 라벨과 맞춘다)
  *   group  시트에서 묶어 보여줄 구분
  *   auto   다른 데이터에서 자동 계산되는 값 (사람이 안 채워도 됨)
+ *   seed   회사 보유 서류에서 확인한 값. 시트를 만들 때 미리 채워 넣는다.
+ *          출처: 사업자등록증(2026-06-02), 중소기업확인서(2026-03-27),
+ *                기업신용평가등급확인서(2026-06-26, 나이스디앤비)
+ *          시트에 적힌 값이 항상 우선하므로 나중에 고치면 그쪽이 이긴다.
  */
 var COMPANY_FIELDS = [
   // ── 기본 ──
-  { key: 'name',        label: '회사명',            group: '기본',   sample: '주식회사 인트윈' },
-  { key: 'nameShort',   label: '약칭',              group: '기본',   sample: '㈜인트윈' },
-  { key: 'ceo',         label: '대표자',            group: '기본',   sample: '최세헌' },
-  { key: 'bizNo',       label: '사업자등록번호',     group: '기본',   sample: '000-00-00000' },
-  { key: 'corpNo',      label: '법인등록번호',       group: '기본',   sample: '000000-0000000' },
-  { key: 'foundedDate', label: '설립일',            group: '기본',   sample: '2014-07-10' },
-  { key: 'foundedYear', label: '설립연도',          group: '기본',   auto: true },
+  { key: 'name',        label: '회사명',        group: '기본', seed: '주식회사 인트윈' },
+  { key: 'nameShort',   label: '약칭',          group: '기본', seed: '㈜인트윈' },
+  { key: 'ceo',         label: '대표자',        group: '기본', seed: '최세헌' },
+  { key: 'bizNo',       label: '사업자등록번호', group: '기본', seed: '486-87-00976' },
+  { key: 'corpNo',      label: '법인등록번호',   group: '기본', seed: '110111-6648187' },
+  { key: 'foundedDate', label: '설립일',        group: '기본', seed: '2018-02-22',
+    note: '사업자등록증 개업연월일' },
+  { key: 'foundedYear', label: '설립연도',      group: '기본', auto: true },
 
   // ── 연락처 ──
-  { key: 'zipCode',     label: '우편번호',          group: '연락처', sample: '07217' },
-  { key: 'address',     label: '주소',              group: '연락처', sample: '서울특별시 영등포구 …' },
-  { key: 'tel',         label: '전화번호',          group: '연락처', sample: '02-0000-0000' },
-  { key: 'fax',         label: '팩스',              group: '연락처', sample: '02-0000-0000' },
-  { key: 'email',       label: '이메일',            group: '연락처', sample: 'contact@intw.co.kr' },
-  { key: 'homepage',    label: '홈페이지',          group: '연락처', sample: 'https://www.intw.co.kr' },
+  { key: 'zipCode',     label: '우편번호',      group: '연락처' },
+  { key: 'address',     label: '주소',          group: '연락처',
+    seed: '서울특별시 영등포구 당산로41길 11, 이동 1002호(당산동4가, 당산 SK V1 center)' },
+  { key: 'tel',         label: '전화번호',      group: '연락처' },
+  { key: 'fax',         label: '팩스',          group: '연락처' },
+  { key: 'email',       label: '이메일',        group: '연락처' },
+  { key: 'homepage',    label: '홈페이지',      group: '연락처' },
 
   // ── 사업 ──
-  { key: 'bizType',     label: '업태',              group: '사업',   sample: '서비스업' },
-  { key: 'bizItem',     label: '종목',              group: '사업',   sample: '행사기획, 광고대행' },
-  { key: 'mainBiz',     label: '주요사업',          group: '사업',   sample: 'MICE 행사 기획·운영' },
-  { key: 'g2bRegNo',    label: '조달청 등록번호',    group: '사업',   sample: '' ,
+  { key: 'bizType',  label: '업태', group: '사업',
+    seed: '정보통신업, 서비스업, 사업시설관리·사업지원 및 임대 서비스업' },
+  { key: 'bizItem',  label: '종목', group: '사업',
+    seed: '포털 및 기타 인터넷 정보 매개 서비스업, 소프트웨어 개발 및 공급, 학술연구용역, ' +
+          '광고 및 프로모션 대행, 영상촬영 및 제작, 전시·컨벤션 및 행사 대행업, ' +
+          '국제회의 기획업, 디자인 제작, 광고영화 및 비디오물 제작업, 교육컨설팅' },
+  { key: 'mainBiz',    label: '주요사업',        group: '사업',
+    note: '서식에 한 줄로 적을 대표 문구' },
+  { key: 'g2bRegNo',   label: '조달청 등록번호', group: '사업',
     note: '경쟁입찰참가자격 등록증에 적힌 번호' },
-  { key: 'g2bLicense',  label: '조달청 등록 업종',   group: '사업',   sample: '용역-행사대행' },
+  { key: 'g2bLicense', label: '조달청 등록 업종', group: '사업', note: '예) 용역-행사대행' },
 
   // ── 규모 ──
-  { key: 'companyScale', label: '기업규모',         group: '규모',   sample: '중소기업(중기업)' },
-  { key: 'capital',      label: '자본금',           group: '규모',   sample: '' },
-  { key: 'revenueYear',  label: '최근 결산연도',     group: '규모',   sample: '2025' },
-  { key: 'revenue',      label: '최근년도 매출액',   group: '규모',   sample: '' },
-  { key: 'revenue3y',    label: '최근 3년 평균 매출액', group: '규모', sample: '' },
-  { key: 'totalAsset',   label: '총자산',           group: '규모',   sample: '' },
+  { key: 'companyScale', label: '기업규모', group: '규모', seed: '중소기업(중기업)',
+    note: '중소기업확인서 유효기간 2026-04-01 ~ 2027-03-31' },
+  { key: 'capital',      label: '자본금',   group: '규모', seed: '61,000,000원' },
+  { key: 'revenueYear',  label: '최근 결산연도', group: '규모', seed: '2025' },
+  { key: 'revenue',      label: '최근년도 매출액', group: '규모', seed: '4,755,000,000원' },
+  { key: 'revenue3y',    label: '최근 3년 평균 매출액', group: '규모', seed: '5,691,000,000원',
+    note: '2023~2025 평균' },
+  { key: 'totalAsset',   label: '총자산',   group: '규모', seed: '5,939,000,000원' },
 
   // ── 인적구성 (인력현황 시트에서 자동 계산) ──
-  { key: 'employees',    label: '상시근로자수',      group: '인적구성', auto: true },
-  { key: 'employeesAll', label: '총 인원',          group: '인적구성', auto: true },
-  { key: 'employeesFull',label: '정규직(상근)',      group: '인적구성', auto: true },
-  { key: 'employeesPart',label: '비상근',           group: '인적구성', auto: true },
+  { key: 'employees',     label: '상시근로자수', group: '인적구성', auto: true },
+  { key: 'employeesAll',  label: '총 인원',     group: '인적구성', auto: true },
+  { key: 'employeesFull', label: '정규직(상근)', group: '인적구성', auto: true },
+  { key: 'employeesPart', label: '비상근',      group: '인적구성', auto: true },
 
   // ── 신인도 · 인증 ──
-  { key: 'creditGrade',  label: '신용평가등급',      group: '신인도', sample: 'e-50(BB0)' },
-  { key: 'creditAgency', label: '신용평가기관',      group: '신인도', sample: '(주)나이스디앤비' },
-  { key: 'sanctionYn',   label: '부정당업자 제재 여부', group: '신인도', sample: '없음',
-    note: '없음 / 있음' },
-  { key: 'sanctionOrg',  label: '제재기관',          group: '신인도', sample: '',
-    note: '제재가 있을 때만' },
-  { key: 'sanctionPeriod', label: '제재기간',        group: '신인도', sample: '' },
-  { key: 'sanctionReason', label: '제재사유',        group: '신인도', sample: '' },
-  { key: 'accidentRate', label: '산업재해율',        group: '신인도', sample: '' },
-  { key: 'certifications', label: '보유 인증',       group: '신인도', sample: '',
+  { key: 'creditGrade',  label: '신용평가등급', group: '신인도', seed: 'e-50(BB0)',
+    note: '유효기간 2027-06-25' },
+  { key: 'creditAgency', label: '신용평가기관', group: '신인도', seed: '(주)나이스디앤비' },
+  { key: 'sanctionYn',   label: '부정당업자 제재 여부', group: '신인도', seed: '없음',
+    note: '제재가 생기면 있음 으로 바꾸고 아래 3칸을 채우세요' },
+  { key: 'sanctionOrg',    label: '제재기관', group: '신인도' },
+  { key: 'sanctionPeriod', label: '제재기간', group: '신인도' },
+  { key: 'sanctionReason', label: '제재사유', group: '신인도' },
+  { key: 'accidentRate',   label: '산업재해율', group: '신인도',
+    note: '산업재해율 확인서에 적힌 값' },
+  { key: 'certifications', label: '보유 인증', group: '신인도',
     note: 'ISO, 벤처기업, 이노비즈 등 쉼표로' },
-  { key: 'womanBiz',     label: '여성기업 여부',     group: '신인도', sample: '해당없음' },
-  { key: 'disabledBiz',  label: '장애인기업 여부',   group: '신인도', sample: '해당없음' },
-  { key: 'socialBiz',    label: '사회적기업 여부',   group: '신인도', sample: '해당없음' },
+  { key: 'patents',        label: '특허 보유',  group: '신인도',
+    seed: '특허 2건 (PD-231201, PD-231202)', note: '신인도 평가 가점 자료' },
+  { key: 'womanBiz',    label: '여성기업 여부',   group: '신인도', seed: '해당없음' },
+  { key: 'disabledBiz', label: '장애인기업 여부', group: '신인도', seed: '해당없음' },
+  { key: 'socialBiz',   label: '사회적기업 여부', group: '신인도', seed: '해당없음' },
 
   // ── 금융 ──
-  { key: 'bank',         label: '주거래은행',        group: '금융',   sample: 'KB국민은행' },
-  { key: 'accountNo',    label: '계좌번호',          group: '금융',   sample: '' },
-  { key: 'accountHolder',label: '예금주',           group: '금융',   sample: '주식회사 인트윈' }
+  { key: 'bank',          label: '주거래은행', group: '금융', seed: 'KB국민은행' },
+  { key: 'accountNo',     label: '계좌번호',   group: '금융' },
+  { key: 'accountHolder', label: '예금주',     group: '금융', seed: '주식회사 인트윈' }
 ];
 
 /** 0 이 반복되는 값은 아직 실제 값이 아니라고 본다 */
@@ -186,7 +202,7 @@ function setupCompanySheet() {
     }
     rows.push([
       f.label,
-      existing[f.label] || '',
+      existing[f.label] || f.seed || '',
       f.group,
       f.auto ? '자동 계산 (비워두세요)' : (f.note || '')
     ]);
