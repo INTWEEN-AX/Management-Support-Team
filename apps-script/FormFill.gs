@@ -229,12 +229,14 @@ function getProposalPack(bidNo, bidOrd) {
   var folder = findBidFolder_(bid);
   var uploads = [];
   if (folder) {
+    var strays = [];
     var it = folder.getFiles();
     while (it.hasNext()) {
       var f = it.next();
       var name = f.getName();
       if (name === BRIEF_CACHE_NAME) continue;
       if (!/\.hwpx$/i.test(name)) continue;
+      if (GENERATED_NAME_RE.test(name)) { strays.push(f); continue; }
       uploads.push({
         name: name,
         ext: 'hwpx',
@@ -244,6 +246,9 @@ function getProposalPack(bidNo, bidOrd) {
         kindLabel: classifyFormName_(name).label
       });
     }
+
+    // 예전에 원본과 섞여 저장된 결과물을 하위 폴더로 옮긴다 (한 번만 일어난다)
+    if (strays.length) tidyGeneratedFiles_(folder, strays);
   }
 
   // 올린 문서 중 서식 목차가 가장 많이 나온 것을 제안요청서로 본다.
@@ -433,6 +438,27 @@ function readTableSummary_(tbl) {
 
 
 var ANALYSIS_STORE_NAME = '_분석.json';
+var GENERATED_FOLDER_NAME = '생성물';
+
+/** 우리가 채워 만든 파일 이름 (원본과 구분해 분석에서 제외한다) */
+var GENERATED_NAME_RE = /_작성_\d{8}_\d{4}\.hwpx$/i;
+
+/** 원본 폴더에 흩어져 있는 결과물을 하위 폴더로 모은다 */
+function tidyGeneratedFiles_(folder, files) {
+  try {
+    var dest = getGeneratedFolder_(folder);
+    files.forEach(function (f) { f.moveTo(dest); });
+    Logger.log('결과물 ' + files.length + '개를 ' + GENERATED_FOLDER_NAME + ' 로 옮김');
+  } catch (e) {
+    Logger.log('결과물 정리 실패(무시): ' + e);
+  }
+}
+
+/** 생성 결과를 담을 하위 폴더 */
+function getGeneratedFolder_(parent) {
+  var it = parent.getFoldersByName(GENERATED_FOLDER_NAME);
+  return it.hasNext() ? it.next() : parent.createFolder(GENERATED_FOLDER_NAME);
+}
 
 /** 파일 하나의 분석 결과를 가리키는 키 (내용이 바뀌면 자동으로 달라진다) */
 function analysisKey_(file) {
@@ -482,9 +508,16 @@ function analyzeUpload(bidNo, bidOrd, fileId) {
 
   if (!store[key]) {
     store[key] = analyzeHwpx_(file);
-    // 같은 파일의 옛 분석 결과는 버린다
+
+    // 같은 파일의 옛 결과와, 이미 사라진 파일의 결과를 함께 버린다
+    var alive = {};
+    var it2 = folder.getFiles();
+    while (it2.hasNext()) alive[it2.next().getId()] = true;
+
     Object.keys(store).forEach(function (k) {
-      if (k !== key && k.indexOf(fileId + '|') === 0) delete store[k];
+      var id = k.split('|')[0];
+      if (k === key) return;
+      if (id === fileId || !alive[id]) delete store[k];
     });
     writeAnalysisStore_(folder, store);
   }
@@ -694,8 +727,9 @@ function generateFilledForm(fileId, selection, bidNo, bidOrd) {
   var outName = file.getName().replace(/\.hwpx$/i, '') + '_작성_' + stamp + '.hwpx';
   var blob = Utilities.zip(out, outName).setName(outName);
 
-  var folder = file.getParents().hasNext() ? file.getParents().next() : DriveApp.getRootFolder();
-  var saved = folder.createFile(blob);
+  // 결과물은 하위 폴더에 담는다. 원본과 섞이면 다음 분석 때 이것까지 훑게 된다.
+  var parent = file.getParents().hasNext() ? file.getParents().next() : DriveApp.getRootFolder();
+  var saved = getGeneratedFolder_(parent).createFile(blob);
 
   return JSON.parse(JSON.stringify({
     name: outName,
