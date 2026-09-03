@@ -235,11 +235,14 @@ function getProposalPack(bidNo, bidOrd) {
       var f = it.next();
       var name = f.getName();
       if (name === BRIEF_CACHE_NAME) continue;
-      if (!/\.hwpx$/i.test(name)) continue;
       if (GENERATED_NAME_RE.test(name)) { strays.push(f); continue; }
+      // hwpx 는 표까지 채울 수 있고, pdf 는 읽기만 된다 (참가자격·서식목차 파악용)
+      if (!/\.(hwpx|pdf)$/i.test(name)) continue;
+      var ext = name.toLowerCase().replace(/^.*\./, '');
       uploads.push({
         name: name,
-        ext: 'hwpx',
+        ext: ext,
+        readOnly: ext === 'pdf',
         analysisKey: analysisKey_(f),
         url: f.getUrl(),
         fileId: f.getId(),
@@ -315,6 +318,26 @@ function getProposalPack(bidNo, bidOrd) {
 function findBidFolder_(bid) {
   var it = getBidAttachFolder_().getFoldersByName(bidFolderName_(bid));
   return it.hasNext() ? it.next() : null;
+}
+
+/**
+ * 올린 문서 하나를 분석한다.
+ * hwpx 는 표까지 읽어 채울 수 있고, PDF 는 글자만 읽는다
+ * (참가자격·서식 목차 파악용 — 채우기는 hwpx 에서만 된다).
+ */
+function analyzeUploadFile_(file) {
+  if (/\.pdf$/i.test(file.getName())) {
+    var out = { forms: [], tables: [], quals: [], truncated: false };
+    try {
+      var text = pdfToText_(file);
+      out.forms = extractFormIndex_(text);
+      out.quals = extractQualifications_(text);
+    } catch (e) {
+      Logger.log('PDF 분석 실패: ' + file.getName() + ' — ' + e);
+    }
+    return out;
+  }
+  return analyzeHwpx_(file);
 }
 
 /**
@@ -507,7 +530,7 @@ function analyzeUpload(bidNo, bidOrd, fileId) {
   var key = analysisKey_(file);
 
   if (!store[key]) {
-    store[key] = analyzeHwpx_(file);
+    store[key] = analyzeUploadFile_(file);
 
     // 같은 파일의 옛 결과와, 이미 사라진 파일의 결과를 함께 버린다
     var alive = {};
@@ -556,7 +579,7 @@ function uploadFormFile(payload) {
   // 이걸 안 해두면 화면을 열 때마다 압축을 다시 풀게 된다.
   try {
     var store = readAnalysisStore_(folder);
-    store[analysisKey_(file)] = analyzeHwpx_(file);
+    store[analysisKey_(file)] = analyzeUploadFile_(file);
     writeAnalysisStore_(folder, store);
   } catch (e) {
     Logger.log('업로드 직후 분석 실패(무시, 화면에서 다시 시도): ' + e);

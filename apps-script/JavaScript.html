@@ -1395,7 +1395,11 @@
     files.forEach(function (file) {
       if (/\.hwp$/i.test(file.name)) {
         logUpload(file.name, 'fail',
-          '.hwp 는 채울 수 없습니다 — 한컴에서 hwpx 로 저장해 올려주세요');
+          '.hwp 는 읽을 수 없습니다 — 한컴에서 hwpx 로 저장해 올려주세요');
+        return;
+      }
+      if (!/\.(hwpx|pdf)$/i.test(file.name)) {
+        logUpload(file.name, 'fail', 'hwpx 또는 pdf 만 올릴 수 있습니다');
         return;
       }
       logUpload(file.name, 'busy', '올리는 중…');
