@@ -57,6 +57,7 @@ function onOpen() {
     .addSeparator()
     .addItem('템플릿 등록 (pptx)', 'setupPptTemplate')
     .addItem('템플릿 진단', 'diagnosePptTemplate')
+    .addItem('실적 반영 PPT 생성', 'generatePerfPpt')
     .addToUi();
 
   ui.createMenu('생일메일')
