@@ -37,6 +37,7 @@
     bid: '나라장터 공고 자동 수집 · 매일 오전 갱신 · 투찰은 나라장터에서 직접',
     documents: '입찰 행정서류 유효기간 관리 · D-day는 조회 시점 기준으로 재계산',
     propose: '공고문 분석 및 제안자료 준비 · 실적/인력 선택 후 표로 복사',
+    proposal: '기술 제안서(PPT) 초안 작성 · 준비중',
   };
 
   let ALL_BID_RECORDS = [];
@@ -123,7 +124,7 @@
     window.scrollTo(0, 0);
 
     // 제안자료 페이지는 목록에서만 들어오므로 직접 진입하면 공고 목록으로 되돌린다
-    if (tab === 'propose' && !proposeBid) { switchTab('bid', true); return; }
+    if ((tab === 'propose' || tab === 'proposal') && !proposeBid) { switchTab('bid', true); return; }
 
     // 차트는 패널이 display:none 인 동안 0×0 으로 그려진다.
     // 탭이 보이는 시점에 다시 크기를 잡아줘야 정상 표시된다.
@@ -1154,6 +1155,10 @@
 
     // 앞 공고에서 만든 결과 카드를 지운다 — 안 지우면 다른 공고에 그대로 남는다
     document.querySelectorAll('.gen-result').forEach(function (el) { el.remove(); });
+    const fillBtn = document.getElementById('fill-forms');
+    fillBtn.textContent = '서식 자동작성';
+    fillBtn.className = 'btn-primary';
+    document.getElementById('go-proposal').style.display = 'none';
     document.getElementById('qual-list').innerHTML = '';
     document.getElementById('form-index').innerHTML = '';
     renderPerfList();
@@ -1762,7 +1767,141 @@
     });
     ok.forEach(function (r) { downloadBase64(r.out.name, r.out.dataBase64); });
 
+    // 서식이 나왔으면 다음 단계로 넘어갈 수 있게 한다
+    if (ok.length) {
+      const fb = document.getElementById('fill-forms');
+      fb.textContent = '서식 다시 만들기';
+      fb.className = 'btn-ghost';
+      document.getElementById('go-proposal').style.display = '';
+    }
+
     toast(ok.length ? '서식을 생성해 내려받았습니다.' : '서식 생성에 실패했습니다.');
+  }
+
+  // ── 제안서 작성 (아직 목업) ──
+
+  /**
+   * 회사 제안서 템플릿.
+   * 지금은 자리표시다. 과거 제안서에서 레이아웃을 추려내면 이 목록을 채운다.
+   */
+  const PROPOSAL_TEMPLATES = [
+    { id: 'event',   name: '행사·컨퍼런스형', slides: 42,
+      desc: '개막식·세션 운영이 중심인 사업', tags: ['행사 기획·운영', '국제회의'] },
+    { id: 'startup', name: '창업지원형',      slides: 38,
+      desc: '보육·액셀러레이팅·IR 중심',      tags: ['스타트업 지원', '교육'] },
+    { id: 'promo',   name: '홍보·마케팅형',    slides: 35,
+      desc: '캠페인·콘텐츠 제작이 중심',      tags: ['홍보/마케팅'] },
+    { id: 'blank',   name: '기본형',          slides: 30,
+      desc: '표지·목차·간지만 있는 빈 틀',     tags: ['공통'] }
+  ];
+
+  /** 표준 목차 — 실제로는 제안요청서의 평가항목에서 뽑아야 한다 */
+  const PROPOSAL_OUTLINE = [
+    { no: 'I',    title: '일반현황',      note: '회사 개요·조직·실적',      auto: true },
+    { no: 'II',   title: '사업 이해도',    note: '발주 배경, 환경 분석' },
+    { no: 'III',  title: '추진 전략',      note: '기본 방향, 차별화' },
+    { no: 'IV',   title: '세부 수행계획',   note: '과업별 실행계획' },
+    { no: 'V',    title: '운영 계획',      note: '현장 운영·동선·인력 배치' },
+    { no: 'VI',   title: '홍보 계획',      note: '채널·콘텐츠·일정' },
+    { no: 'VII',  title: '인력 투입계획',   note: '조직도·역할·투입률',      auto: true },
+    { no: 'VIII', title: '일정 계획',      note: 'WBS' },
+    { no: 'IX',   title: '품질·위험 관리',  note: '리스크 대응' },
+    { no: 'X',    title: '기대효과',       note: '정량·정성 성과' }
+  ];
+
+  let selectedTemplate = null;
+
+  function openProposal() {
+    if (!proposeBid) return;
+    selectedTemplate = null;
+    switchTab('proposal');
+
+    document.getElementById('proposal-bid-name').textContent = proposeBid.name;
+    document.getElementById('proposal-bid-meta').textContent =
+      [proposeBid.noticeOrg, proposeBid.method,
+       proposeBid.budget ? '예산 ' + Math.round(proposeBid.budget / 10000).toLocaleString() + '만원' : '',
+       proposeBid.closeDt ? '마감 ' + proposeBid.closeDt : '']
+      .filter(Boolean).join(' · ');
+
+    renderProposalSpec();
+    renderProposalTemplates();
+    renderProposalOutline();
+    renderProposalSelected();
+  }
+
+  /** 제안서 규격 — 제안요청서에서 읽어야 하지만 아직 연결 전이라 자리만 잡아둔다 */
+  function renderProposalSpec() {
+    const rows = [
+      ['형식',     '파워포인트 · A4 가로 · 단면 출력'],
+      ['분량',     '50페이지 이내 (표지·목차 불포함)'],
+      ['제출',     '10부 · 원본 1부만 상호 기재'],
+      ['블라인드', '사본에는 회사명·로고·실적 표기 금지']
+    ];
+    document.getElementById('proposal-spec').innerHTML = rows.map(function (r) {
+      return '<div class="spec-item">' +
+        '<span class="spec-key">' + escapeHtml(r[0]) + '</span>' +
+        '<span class="spec-val">' + escapeHtml(r[1]) + '</span>' +
+      '</div>';
+    }).join('');
+    document.getElementById('proposal-spec-hint').textContent =
+      '예시값입니다 — 제안요청서에서 읽어오도록 연결 예정';
+  }
+
+  function renderProposalTemplates() {
+    const box = document.getElementById('proposal-templates');
+    box.innerHTML = PROPOSAL_TEMPLATES.map(function (t) {
+      return '<button type="button" class="tpl-card' +
+          (selectedTemplate === t.id ? ' on' : '') + '" data-tpl="' + t.id + '">' +
+        '<span class="tpl-name">' + escapeHtml(t.name) + '</span>' +
+        '<span class="tpl-desc">' + escapeHtml(t.desc) + '</span>' +
+        '<span class="tpl-meta">' + t.slides + '장 · ' +
+          t.tags.map(escapeHtml).join(' · ') + '</span>' +
+      '</button>';
+    }).join('');
+
+    box.querySelectorAll('.tpl-card').forEach(function (c) {
+      c.addEventListener('click', function () {
+        selectedTemplate = c.dataset.tpl;
+        renderProposalTemplates();
+        renderProposalSelected();
+      });
+    });
+  }
+
+  function renderProposalOutline() {
+    document.getElementById('proposal-outline-hint').textContent =
+      PROPOSAL_OUTLINE.length + '개 장 · 표준 목차';
+
+    document.getElementById('proposal-outline').innerHTML =
+      PROPOSAL_OUTLINE.map(function (o) {
+        return '<div class="outline-row' + (o.auto ? ' auto' : '') + '">' +
+          '<span class="outline-no">' + escapeHtml(o.no) + '</span>' +
+          '<span class="outline-body">' +
+            '<span class="outline-title">' + escapeHtml(o.title) + '</span>' +
+            '<span class="outline-note">' + escapeHtml(o.note) + '</span>' +
+          '</span>' +
+          '<span class="outline-flag">' + (o.auto ? 'DB로 채움' : '초안 생성') + '</span>' +
+        '</div>';
+      }).join('');
+  }
+
+  function renderProposalSelected() {
+    const t = PROPOSAL_TEMPLATES.filter(function (x) { return x.id === selectedTemplate; })[0];
+    document.getElementById('proposal-selected').textContent =
+      t ? t.name + ' 선택됨 · ' + t.slides + '장' : '템플릿을 고르세요';
+  }
+
+  function initProposal() {
+    document.getElementById('go-proposal').addEventListener('click', openProposal);
+    document.getElementById('back-to-propose').addEventListener('click', function () {
+      switchTab('propose');
+    });
+    document.getElementById('proposal-back').addEventListener('click', function () {
+      switchTab('propose');
+    });
+    document.getElementById('proposal-generate').addEventListener('click', function () {
+      toast('아직 연결되지 않았습니다. API 키를 등록하면 초안 생성이 열립니다.');
+    });
   }
 
   // ── 표 복사 ──
@@ -1871,6 +2010,7 @@
 
   function initProposeModal() {
     initUpload();
+    initProposal();
     document.getElementById('propose-perf-search').addEventListener('input', renderPerfList);
     document.getElementById('propose-perf-sort').addEventListener('change', renderPerfList);
     document.getElementById('propose-hr-search').addEventListener('input', renderProposePeople);

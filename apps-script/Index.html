@@ -427,6 +427,59 @@
           <button type="button" class="btn-ghost" id="copy-perf">실적표 복사</button>
           <button type="button" class="btn-ghost" id="copy-hr">인력표 복사</button>
           <button type="button" class="btn-primary" id="fill-forms">서식 자동작성</button>
+          <button type="button" class="btn-primary" id="go-proposal" style="display:none">제안서 작성하기 →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 제안서 작성 (제안자료에서 넘어옴) ============ -->
+    <div class="panel" id="panel-proposal" style="display:none">
+      <div class="panel-body">
+
+        <div class="propose-topbar">
+          <button type="button" class="back-link" id="back-to-propose">◂ 제안자료로</button>
+          <span class="wip-badge">준비중 · API 연결 후 사용</span>
+        </div>
+
+        <header class="propose-header">
+          <h2 id="proposal-bid-name">–</h2>
+          <div class="propose-meta" id="proposal-bid-meta"></div>
+        </header>
+
+        <section class="step-card">
+          <div class="step-head">
+            <span class="step-no">1</span>
+            <h3>제안서 요건</h3>
+            <span class="step-hint" id="proposal-spec-hint">제안요청서에서 읽어옵니다</span>
+          </div>
+          <div class="spec-grid" id="proposal-spec"></div>
+        </section>
+
+        <section class="step-card">
+          <div class="step-head">
+            <span class="step-no">2</span>
+            <h3>템플릿 고르기</h3>
+            <span class="step-hint">과거 제안서에서 뽑은 레이아웃</span>
+          </div>
+          <div class="tpl-grid" id="proposal-templates"></div>
+        </section>
+
+        <section class="step-card">
+          <div class="step-head">
+            <span class="step-no">3</span>
+            <h3>슬라이드 구성</h3>
+            <span class="step-hint" id="proposal-outline-hint"></span>
+          </div>
+          <div class="outline-list" id="proposal-outline"></div>
+        </section>
+
+      </div>
+
+      <div class="propose-dock">
+        <div class="propose-selected" id="proposal-selected">템플릿을 고르세요</div>
+        <div class="propose-actions">
+          <button type="button" class="btn-ghost" id="proposal-back">서식으로 돌아가기</button>
+          <button type="button" class="btn-primary" id="proposal-generate" disabled>초안 생성</button>
         </div>
       </div>
     </div>
