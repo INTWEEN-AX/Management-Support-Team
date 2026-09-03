@@ -218,14 +218,13 @@ function extractQualifications_(text) {
 function getProposalPack(bidNo, bidOrd) {
   var bid = findBidRecord_(bidNo, bidOrd);
 
-  // ① 나라장터 첨부 — 수집할 때 이미 저장해둔 목록을 그대로 쓴다.
-  //    화면을 열 때마다 API 를 치면 몇 초씩 걸리는데, 같은 정보를 이미 갖고 있다.
+  // ① 나라장터 첨부 — 수집할 때 저장해둔 목록을 그대로 쓴다. API 호출 없음.
   var notice = (bid.attachments || []).map(function (d) {
     return { name: d.name, ext: d.ext, url: d.url, kindLabel: classifyFormName_(d.name).label };
   });
-  var noticeFromSheet = notice.length > 0;
 
-  // ② 사람이 올린 파일만 분석 대상
+  // ② 사람이 올린 파일 — 목록만 만든다.
+  //    내용은 읽지 않는다. 실제로 필요한 순간(서식 채우기, 공고문 읽기)에만 연다.
   var folder = findBidFolder_(bid);
   var uploads = [];
   if (folder) {
@@ -234,83 +233,80 @@ function getProposalPack(bidNo, bidOrd) {
     while (it.hasNext()) {
       var f = it.next();
       var name = f.getName();
-      if (name === BRIEF_CACHE_NAME) continue;
+      if (name === BRIEF_CACHE_NAME || name === ANALYSIS_STORE_NAME) continue;
       if (GENERATED_NAME_RE.test(name)) { strays.push(f); continue; }
-      // hwpx 는 표까지 채울 수 있고, pdf 는 읽기만 된다 (참가자격·서식목차 파악용)
       if (!/\.(hwpx|pdf)$/i.test(name)) continue;
+
       var ext = name.toLowerCase().replace(/^.*\./, '');
       uploads.push({
         name: name,
         ext: ext,
-        readOnly: ext === 'pdf',
-        analysisKey: analysisKey_(f),
+        fillable: ext === 'hwpx',      // 채우기는 hwpx 에서만 된다
         url: f.getUrl(),
         fileId: f.getId(),
         kindLabel: classifyFormName_(name).label
       });
     }
-
     // 예전에 원본과 섞여 저장된 결과물을 하위 폴더로 옮긴다 (한 번만 일어난다)
     if (strays.length) tidyGeneratedFiles_(folder, strays);
   }
 
-  // 올린 문서 중 서식 목차가 가장 많이 나온 것을 제안요청서로 본다.
-  // 여기서는 분석하지 않는다 — 저장해둔 결과만 읽는다.
-  // 압축 해제와 파싱은 무거워서 화면 열 때마다 하면 몇 분씩 걸린다.
-  var store = folder ? readAnalysisStore_(folder) : {};
-  var rfp = null, forms = [], tables = [], quals = [], pending = [];
-  var qualSeen = {};
-
-  uploads.forEach(function (u) {
-    var an = store[u.analysisKey];
-    if (!an) { u.pending = true; pending.push({ fileId: u.fileId, name: u.name }); return; }
-
-    u.formCount = (an.forms || []).length;
-    u.tableCount = (an.tables || []).length;
-    u.qualCount = (an.quals || []).length;
-
-    (an.quals || []).forEach(function (q) {
-      var k = q.text.replace(/\s+/g, '');
-      if (qualSeen[k]) return;
-      qualSeen[k] = true;
-      q.from = u.name;
-      quals.push(q);
-    });
-
-    if (!rfp || (an.forms || []).length > forms.length) {
-      rfp = u;
-      forms = an.forms || [];
-    }
-    (an.tables || []).forEach(function (t) {
-      t.fileId = u.fileId;
-      t.fileName = u.name;
-      tables.push(t);
-    });
-  });
-
-  // 채워야 하는 서식 중 실제로 표가 잡힌 것
-  var needPerf = forms.some(function (f) { return f.kind === 'perf'; });
-  var needHr = forms.some(function (f) { return f.kind === 'hr'; });
-  var hasPerfTable = tables.some(function (t) { return t.kind === 'perf'; });
-  var hasHrTable = tables.some(function (t) { return t.kind === 'hr'; });
-
   return JSON.parse(JSON.stringify({
     bid: bid,
     notice: notice,
+    noticeFromSheet: notice.length > 0,
     uploads: uploads,
     folderUrl: folder ? folder.getUrl() : '',
-    noticeFromSheet: noticeFromSheet,
+    company: getCompanyInfo()
+  }));
+}
+
+/**
+ * 올린 문서에서 서식 목차와 참가자격을 읽는다. 사용자가 눌렀을 때만 돈다.
+ *
+ * 글자만 뽑으므로 (hwpx 는 <hp:t> 정규식, pdf 는 변환) 표 구조는 건드리지 않는다.
+ * 표는 실제로 채울 때 한 번만 읽으면 된다 — 미리 훑어두면 같은 일을 두 번 하게 된다.
+ */
+function readUploadedDocs(bidNo, bidOrd) {
+  var bid = findBidRecord_(bidNo, bidOrd);
+  var folder = findBidFolder_(bid);
+  if (!folder) throw new Error('올린 문서가 없습니다. 제안요청서를 먼저 올려주세요.');
+
+  var rfp = null, forms = [], quals = [], seen = {}, read = [];
+
+  var it = folder.getFiles();
+  while (it.hasNext()) {
+    var f = it.next();
+    var name = f.getName();
+    if (name === BRIEF_CACHE_NAME || name === ANALYSIS_STORE_NAME) continue;
+    if (GENERATED_NAME_RE.test(name)) continue;
+    if (!/\.(hwpx|pdf)$/i.test(name)) continue;
+
+    try {
+      var text = /\.pdf$/i.test(name) ? pdfToText_(f) : hwpxToText_(f);
+      var idx = extractFormIndex_(text);
+
+      extractQualifications_(text).forEach(function (q) {
+        var k = q.text.replace(/\s+/g, '');
+        if (seen[k]) return;
+        seen[k] = true;
+        q.from = name;
+        quals.push(q);
+      });
+
+      if (idx.length > forms.length) { rfp = name; forms = idx; }
+      read.push(name + ' (서식 ' + idx.length + '건)');
+    } catch (e) {
+      read.push(name + ' — 읽기 실패');
+      Logger.log('문서 읽기 실패: ' + name + ' — ' + e);
+    }
+  }
+
+  return JSON.parse(JSON.stringify({
     rfp: rfp,
     forms: forms,
-    tables: tables,
     quals: quals.sort(function (a, b) { return (b.numeric ? 1 : 0) - (a.numeric ? 1 : 0); }),
-    pending: pending,
-    summary: {
-      total: forms.length,
-      fillable: forms.filter(function (f) { return f.fillable; }).length,
-      needPerf: needPerf, hasPerfTable: hasPerfTable,
-      needHr: needHr, hasHrTable: hasHrTable
-    }
+    read: read
   }));
 }
 
@@ -318,98 +314,6 @@ function getProposalPack(bidNo, bidOrd) {
 function findBidFolder_(bid) {
   var it = getBidAttachFolder_().getFoldersByName(bidFolderName_(bid));
   return it.hasNext() ? it.next() : null;
-}
-
-/**
- * 올린 문서 하나를 분석한다.
- * hwpx 는 표까지 읽어 채울 수 있고, PDF 는 글자만 읽는다
- * (참가자격·서식 목차 파악용 — 채우기는 hwpx 에서만 된다).
- */
-function analyzeUploadFile_(file) {
-  if (/\.pdf$/i.test(file.getName())) {
-    var out = { forms: [], tables: [], quals: [], truncated: false };
-    try {
-      var text = pdfToText_(file);
-      out.forms = extractFormIndex_(text);
-      out.quals = extractQualifications_(text);
-    } catch (e) {
-      Logger.log('PDF 분석 실패: ' + file.getName() + ' — ' + e);
-    }
-    return out;
-  }
-  return analyzeHwpx_(file);
-}
-
-/**
- * hwpx 를 한 번만 풀어서 본문 텍스트와 표를 함께 얻는다.
- * 전에는 텍스트용·표용으로 각각 압축을 풀어 같은 일을 두 번 했다.
- */
-function analyzeHwpx_(file) {
-  var out = { forms: [], tables: [], quals: [], truncated: false };
-  var started = Date.now();
-
-  try {
-    var entries = Utilities.unzip(file.getBlob().setContentType('application/zip'));
-    var sections = [];
-    entries.forEach(function (b) {
-      if (HWPX_SECTION_RE.test(b.getName())) sections.push(b.getDataAsString('UTF-8'));
-    });
-
-    // ① 텍스트 — XML 파서로 트리를 통째로 훑으면 큰 문서에서 실행시간을 다 쓴다.
-    //    본문 글자는 <hp:t> 안에만 있으므로 정규식이면 충분하고 훨씬 빠르다.
-    var textParts = [];
-    sections.forEach(function (xml) {
-      var re = /<hp:t>([\s\S]*?)<\/hp:t>/g, m;
-      while ((m = re.exec(xml)) !== null) textParts.push(unescapeXml_(m[1]));
-    });
-    var fullText = textParts.join(' ');
-    out.forms = extractFormIndex_(fullText);
-    out.quals = extractQualifications_(fullText);
-
-    // ② 표 — 구조가 필요하니 파서를 쓰되, 한 번만 훑고 시간 예산을 둔다
-    for (var i = 0; i < sections.length; i++) {
-      if (Date.now() - started > HWPX_SCAN_BUDGET_MS) { out.truncated = true; break; }
-      var root = XmlService.parse(sections[i]).getRootElement();
-      collectTableSummaries_(root, out.tables, started);
-      if (out.tables.length >= HWPX_MAX_TABLES) { out.truncated = true; break; }
-    }
-  } catch (e) {
-    Logger.log('hwpx 분석 실패: ' + file.getName() + ' — ' + e);
-  }
-
-  return out;
-}
-
-var HWPX_SCAN_BUDGET_MS = 120 * 1000;  // 파일 하나의 표 검사에 쓸 최대 시간 (업로드 직후 한 번만 돈다)
-var HWPX_MAX_TABLES = 60;              // 이보다 많으면 앞쪽만 본다
-
-/** XML 이스케이프 되돌리기 (정규식으로 뽑은 텍스트용) */
-function unescapeXml_(s) {
-  return String(s)
-    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
-    .replace(/&amp;/g, '&');
-}
-
-/**
- * 표를 찾아 요약을 모은다.
- * 트리를 한 번만 내려가고, 표 안으로는 더 들어가지 않는다 (중첩 표는 드물다).
- */
-function collectTableSummaries_(element, acc, started) {
-  if (acc.length >= HWPX_MAX_TABLES) return;
-  if (Date.now() - started > HWPX_SCAN_BUDGET_MS) return;
-
-  var children = element.getChildren();
-  for (var i = 0; i < children.length; i++) {
-    var c = children[i];
-    if (c.getName() === 'tbl') {
-      var t = readTableSummary_(c);
-      if (t) acc.push(t);
-      continue;                      // 표 안은 더 파고들지 않는다
-    }
-    collectTableSummaries_(c, acc, started);
-    if (acc.length >= HWPX_MAX_TABLES) return;
-  }
 }
 
 /** 표 요소만 모은다 (표 안으로는 들어가지 않는다) */
@@ -421,46 +325,8 @@ function collectTableElements_(element, acc) {
   }
 }
 
-/** 표 하나를 요약 — 채울 수 있는 종류인지, 빈 행이 몇 개인지 */
-function readTableSummary_(tbl) {
-  var trs = tbl.getChildren().filter(function (c) { return c.getName() === 'tr'; });
-  if (trs.length < 2) return null;
 
-  var headers = trs[0].getChildren()
-    .filter(function (c) { return c.getName() === 'tc'; })
-    .map(function (tc) { return collectText_(tc); });
-  if (headers.length < 2) return null;
-
-  var perfCols = mapColumns_(headers, PERF_COLUMN_MAP);
-  var hrCols = mapColumns_(headers, HR_COLUMN_MAP);
-  var labeled = headers.filter(function (t) { return t; }).length;
-  var need = Math.max(2, Math.ceil(labeled / 2));
-
-  var kind = '';
-  if (countMapped_(perfCols) >= need) kind = 'perf';
-  else if (countMapped_(hrCols) >= need) kind = 'hr';
-  else if (countCompanyLabels_(trs) >= 3) kind = 'company';
-  if (!kind) return null;
-
-  var emptyRows = 0;
-  for (var r = 1; r < trs.length; r++) {
-    var cells = trs[r].getChildren().filter(function (c) { return c.getName() === 'tc'; });
-    if (cells.length && cells.every(function (tc) { return isEmptyCell_(collectText_(tc)); })) {
-      emptyRows++;
-    }
-  }
-
-  return {
-    kind: kind,
-    label: kind === 'perf' ? '실적표' : (kind === 'hr' ? '인력표' : '회사정보표'),
-    rows: trs.length,
-    emptyRows: emptyRows,
-    headers: headers.filter(Boolean).slice(0, 8)
-  };
-}
-
-
-var ANALYSIS_STORE_NAME = '_분석.json';
+var ANALYSIS_STORE_NAME = '_분석.json';   // 예전 버전이 남긴 파일 — 목록에서 제외한다
 var GENERATED_FOLDER_NAME = '생성물';
 
 /** 우리가 채워 만든 파일 이름 (원본과 구분해 분석에서 제외한다) */
@@ -483,69 +349,6 @@ function getGeneratedFolder_(parent) {
   return it.hasNext() ? it.next() : parent.createFolder(GENERATED_FOLDER_NAME);
 }
 
-/** 파일 하나의 분석 결과를 가리키는 키 (내용이 바뀌면 자동으로 달라진다) */
-function analysisKey_(file) {
-  return file.getId() + '|' + file.getLastUpdated().getTime();
-}
-
-/** 공고 폴더에 저장해둔 분석 결과 전체를 읽는다 */
-function readAnalysisStore_(folder) {
-  try {
-    var it = folder.getFilesByName(ANALYSIS_STORE_NAME);
-    if (!it.hasNext()) return {};
-    return JSON.parse(it.next().getBlob().getDataAsString('UTF-8')) || {};
-  } catch (e) {
-    Logger.log('분석 결과 읽기 실패(무시): ' + e);
-    return {};
-  }
-}
-
-/**
- * 분석 결과를 저장한다.
- * CacheService 는 6시간이면 날아가고 크기 제한도 있어서, 공고 폴더에 파일로 남긴다.
- * 그래야 화면을 열 때마다 압축을 다시 풀지 않는다.
- */
-function writeAnalysisStore_(folder, store) {
-  try {
-    var body = JSON.stringify(store);
-    var it = folder.getFilesByName(ANALYSIS_STORE_NAME);
-    if (it.hasNext()) it.next().setContent(body);
-    else folder.createFile(Utilities.newBlob(body, 'application/json', ANALYSIS_STORE_NAME));
-  } catch (e) {
-    Logger.log('분석 결과 저장 실패(무시): ' + e);
-  }
-}
-
-/**
- * 올린 문서 하나를 분석해서 결과를 저장한다. 화면이 파일마다 한 번씩 부른다.
- * 한 번에 하나만 처리하므로 실행시간 제한에 걸리지 않고, 진행 상황도 보여줄 수 있다.
- */
-function analyzeUpload(bidNo, bidOrd, fileId) {
-  var bid = findBidRecord_(bidNo, bidOrd);
-  var folder = findBidFolder_(bid);
-  if (!folder) throw new Error('공고 폴더를 찾지 못했습니다.');
-
-  var file = DriveApp.getFileById(fileId);
-  var store = readAnalysisStore_(folder);
-  var key = analysisKey_(file);
-
-  if (!store[key]) {
-    store[key] = analyzeUploadFile_(file);
-
-    // 같은 파일의 옛 결과와, 이미 사라진 파일의 결과를 함께 버린다
-    var alive = {};
-    var it2 = folder.getFiles();
-    while (it2.hasNext()) alive[it2.next().getId()] = true;
-
-    Object.keys(store).forEach(function (k) {
-      var id = k.split('|')[0];
-      if (k === key) return;
-      if (id === fileId || !alive[id]) delete store[k];
-    });
-    writeAnalysisStore_(folder, store);
-  }
-  return getProposalPack(bidNo, bidOrd);
-}
 
 /**
  * 웹앱에서 사람이 직접 올린 서식을 공고 폴더에 저장한다.
@@ -575,15 +378,6 @@ function uploadFormFile(payload) {
 
   var file = folder.createFile(blob);
 
-  // 올린 즉시 분석해서 결과를 저장해둔다.
-  // 이걸 안 해두면 화면을 열 때마다 압축을 다시 풀게 된다.
-  try {
-    var store = readAnalysisStore_(folder);
-    store[analysisKey_(file)] = analyzeUploadFile_(file);
-    writeAnalysisStore_(folder, store);
-  } catch (e) {
-    Logger.log('업로드 직후 분석 실패(무시, 화면에서 다시 시도): ' + e);
-  }
 
   return JSON.parse(JSON.stringify({
     name: file.getName(),
