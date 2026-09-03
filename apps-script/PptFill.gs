@@ -94,7 +94,9 @@ function diagnosePptTemplate() {
     out.push('');
 
     t0 = new Date().getTime();
-    var blob = file.getBlob();
+    // unzip 은 ContentType 이 application/zip 이 아니면 거부한다.
+    // 드라이브가 붙여준 pptx MIME 을 갈아끼워야 한다 (hwpx 쪽도 같은 처리)
+    var blob = file.getBlob().setContentType('application/zip');
     lap('드라이브에서 읽기');
 
     var parts = Utilities.unzip(blob);
