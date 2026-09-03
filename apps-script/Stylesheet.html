@@ -1416,11 +1416,24 @@
   }
   .target-size {
     flex: none;
-    margin-left: auto;
     font-family: var(--mono);
     font-size: var(--fs-caption);
     color: var(--grey-3);
   }
+
+  .target-del {
+    flex: none;
+    width: 22px;
+    height: 22px;
+    border: none;
+    background: transparent;
+    border-radius: 50%;
+    color: var(--grey-3);
+    font-size: 11px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .target-del:hover { background: var(--grey-4); color: var(--doc-expired); }
 
   .target-name {
     flex: 1;

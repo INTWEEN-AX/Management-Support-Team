@@ -1246,17 +1246,19 @@
     list.className = 'target-list';
     list.innerHTML = uploadedDocs.map(function (u, i) {
       const size = (u.size / 1024).toFixed(0) + 'KB';
+      const del = '<button type="button" class="target-del" data-del="' + i + '" ' +
+                  'title="목록에서 빼기" aria-label="빼기">✕</button>';
       if (!u.fillable) {
         return '<div class="target-row readonly">' +
           '<span class="target-mark">읽기만</span>' +
           '<span class="target-name">' + escapeHtml(u.name) + '</span>' +
-          '<span class="target-size">' + size + '</span>' +
+          '<span class="target-size">' + size + '</span>' + del +
         '</div>';
       }
       return '<label class="target-row">' +
         '<input type="checkbox" data-idx="' + i + '"' + (u.checked ? ' checked' : '') + '>' +
         '<span class="target-name">' + escapeHtml(u.name) + '</span>' +
-        '<span class="target-size">' + size + '</span>' +
+        '<span class="target-size">' + size + '</span>' + del +
       '</label>';
     }).join('');
     status.appendChild(list);
@@ -1265,6 +1267,15 @@
       cb.addEventListener('change', function () {
         uploadedDocs[Number(cb.dataset.idx)].checked = cb.checked;
         renderProposeSelected();
+      });
+    });
+
+    list.querySelectorAll('.target-del').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        // 행 전체가 label 이라 막지 않으면 체크박스가 같이 토글된다
+        e.preventDefault();
+        e.stopPropagation();
+        removeUpload(Number(b.dataset.del));
       });
     });
 
@@ -1280,6 +1291,25 @@
       renderProposeSelected();
     });
     status.appendChild(box);
+  }
+
+  /** 목록에서 파일 하나를 뺀다 (브라우저 메모리에서만 지우면 된다) */
+  function removeUpload(i) {
+    const gone = uploadedDocs[i];
+    if (!gone) return;
+    uploadedDocs.splice(i, 1);
+    clearUploadLog(gone.name);
+    renderUploadList();
+    renderProposeSelected();
+  }
+
+  function uploadLogId(name) {
+    return 'up_' + name.replace(/[^a-zA-Z0-9]/g, '');
+  }
+
+  function clearUploadLog(name) {
+    const row = document.getElementById(uploadLogId(name));
+    if (row) row.remove();
   }
 
   /** 올린 문서를 읽어 서식 목차와 참가자격을 뽑는다 (사용자가 누를 때만) */
@@ -1458,7 +1488,7 @@
 
   function logUpload(name, state, msg) {
     const log = document.getElementById('upload-log');
-    const id = 'up_' + name.replace(/[^a-zA-Z0-9]/g, '');
+    const id = uploadLogId(name);
     let row = document.getElementById(id);
     if (!row) {
       row = document.createElement('div');
@@ -1468,6 +1498,11 @@
     row.className = 'upload-row ' + state;
     row.innerHTML = '<span class="upload-name">' + escapeHtml(name) + '</span>' +
                     '<span class="upload-msg">' + escapeHtml(msg) + '</span>';
+
+    // 받아들인 파일은 아래 목록에 나타나므로 로그 줄을 오래 둘 필요가 없다.
+    // 거부된 파일도 계속 남아 있으면 올라간 것처럼 보인다.
+    if (state === 'ok') setTimeout(function () { clearUploadLog(name); }, 1500);
+    if (state === 'fail') setTimeout(function () { clearUploadLog(name); }, 6000);
   }
 
   // ── 2단계: 분석 ──
