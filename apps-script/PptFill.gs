@@ -333,3 +333,151 @@ function generatePerfPpt() {
   }
   ui.alert('실적 PPT 생성', log.join('\n'), ui.ButtonSet.OK);
 }
+
+// ── 공고 기반 생성 (웹에서 부른다) ──
+
+/** 웹 화면이 등록된 템플릿을 보여줄 수 있게 */
+function getPptTemplateInfo() {
+  var id = PropertiesService.getScriptProperties().getProperty(PPT_TEMPLATE_PROP);
+  if (!id) return { ok: false, reason: '등록된 템플릿이 없습니다' };
+  try {
+    var f = DriveApp.getFileById(id);
+    return {
+      ok: true,
+      name: f.getName(),
+      sizeMb: Math.round(f.getSize() / 1e5) / 10,
+      updated: Utilities.formatDate(f.getLastUpdated(), Session.getScriptTimeZone(), 'yyyy-MM-dd'),
+      url: f.getUrl()
+    };
+  } catch (e) {
+    return { ok: false, reason: '템플릿 파일을 열지 못했습니다: ' + e.message };
+  }
+}
+
+/**
+ * 공고 제목과 얼마나 닮았는지로 실적을 정렬한다.
+ * 지면이 모자랄 때 공고와 가까운 실적이 남게 하려는 것이다.
+ */
+function perfLinesForBid_(bidName) {
+  var recs = getPerformanceData();
+  var q = bidName ? bigrams_(normTitle_(bidName)) : null;
+  var by = {};
+
+  for (var i = 0; i < recs.length; i++) {
+    var r = recs[i];
+    var y = String(r.year == null ? '' : r.year).replace(/[^0-9]/g, '').slice(0, 4);
+    if (!y) continue;
+    var org = String(r.org || '').trim();
+    var task = String(r.taskName || '').trim();
+    if (!task) continue;
+    var line = (org && task.indexOf(org) !== 0) ? (org + ' ' + task) : task;
+    var sim = q ? diceSim_(q, bigrams_(normTitle_(task))) : 0;
+    if (!by[y]) by[y] = [];
+    by[y].push({ line: line, sim: sim, amount: r.amount || 0 });
+  }
+
+  var out = {};
+  Object.keys(by).forEach(function (y) {
+    out[y] = by[y].sort(function (a, b) {
+      if (b.sim !== a.sim) return b.sim - a.sim;   // 공고와 닮은 것 먼저
+      return b.amount - a.amount;                   // 그다음 금액 큰 것
+    }).map(function (o) { return o.line; });
+  });
+  return out;
+}
+
+/** 긴 사업명을 표지에서 두 줄로 접는다 — 가운데 가까운 띄어쓰기에서 자른다 */
+function splitTitleLines_(name, lines) {
+  var s = String(name || '').trim();
+  if (lines <= 1 || s.length < 14) return [s];
+  var mid = Math.floor(s.length / 2), best = -1;
+  for (var i = 0; i < s.length; i++) {
+    if (s.charAt(i) !== ' ') continue;
+    if (best === -1 || Math.abs(i - mid) < Math.abs(best - mid)) best = i;
+  }
+  if (best === -1) return [s];
+  return [s.slice(0, best).trim(), s.slice(best + 1).trim()];
+}
+
+/**
+ * 표지의 사업명을 공고명으로 바꾼다.
+ * 표지는 글자가 제일 큰 도형이 사업명이다.
+ */
+function fillCoverSlideXml_(xml, bidName) {
+  var shapes = [], m;
+  PPT_SP_RE.lastIndex = 0;
+  while ((m = PPT_SP_RE.exec(xml)) !== null) {
+    var sh = m[0];
+    var paras = sh.match(PPT_PARA_RE);
+    if (!paras || !pptText_(sh)) continue;
+    var sizes = sh.match(/sz="(\d+)"/g) || [];
+    var maxSz = 0;
+    sizes.forEach(function (s) { maxSz = Math.max(maxSz, Number(s.replace(/\D/g, ''))); });
+    shapes.push({ start: m.index, end: m.index + sh.length, sh: sh, sz: maxSz, paras: paras });
+  }
+  if (!shapes.length) return { xml: xml, changed: false };
+
+  var target = shapes[0];
+  shapes.forEach(function (s) { if (s.sz > target.sz) target = s; });
+  if (target.sz < 2400) return { xml: xml, changed: false };   // 24pt 미만이면 표지 제목이 아니다
+
+  var lines = splitTitleLines_(bidName, target.paras.length);
+  var newSh = target.sh;
+  for (var i = 0; i < target.paras.length; i++) {
+    newSh = newSh.replace(target.paras[i],
+      i < lines.length ? setParaText_(target.paras[i], lines[i]) : '');
+  }
+  return { xml: xml.slice(0, target.start) + newSh + xml.slice(target.end), changed: true };
+}
+
+/**
+ * 공고 하나를 받아 제안서 pptx 초안을 만든다.
+ * 드라이브에 저장하지 않고 base64 로 브라우저에 돌려준다 —
+ * 서식 자동작성과 같은 방식이다.
+ */
+function generateProposalPpt(bidNo, bidOrd) {
+  var bid = findBidRecord_(bidNo, bidOrd);
+  var byYear = perfLinesForBid_(bid.name);
+  var report = [];
+
+  var file = DriveApp.getFileById(getPptTemplateId_());
+  var parts = Utilities.unzip(file.getBlob().setContentType('application/zip'));
+
+  var coverDone = false, perfDone = 0;
+  for (var i = 0; i < parts.length; i++) {
+    var name = parts[i].getName();
+    if (!PPT_SLIDE_RE.test(name)) continue;       // 미디어는 건드리지 않는다
+    var num = Number(name.replace(/\D/g, ''));
+    var xml = parts[i].getDataAsString('UTF-8');
+    var changed = false;
+
+    if (!coverDone && num === 1) {                // 표지는 첫 장이다
+      var c = fillCoverSlideXml_(xml, bid.name);
+      if (c.changed) { xml = c.xml; changed = coverDone = true; report.push('표지: 사업명 교체'); }
+    }
+
+    if (xml.indexOf('주요사업 실적') > -1) {
+      var p = fillPerfSlideXml_(xml, byYear);
+      if (p.changed) {
+        xml = p.xml; changed = true; perfDone++;
+        p.report.forEach(function (r) { report.push('실적 ' + r); });
+      }
+    }
+
+    if (changed) parts[i] = Utilities.newBlob(xml, 'application/xml', name);
+  }
+
+  if (!coverDone) report.push('표지: 사업명 자리를 못 찾아 그대로 뒀습니다');
+  if (!perfDone) report.push('실적: 채울 슬라이드를 못 찾았습니다');
+
+  var safe = String(bid.name || '제안서').replace(/[\\/:*?"<>|]/g, ' ').slice(0, 60).trim();
+  var outName = safe + '_제안서초안.pptx';
+  var zipped = Utilities.zip(parts, outName);
+
+  return {
+    name: outName,
+    dataBase64: Utilities.base64Encode(zipped.getBytes()),
+    report: report,
+    bidName: bid.name
+  };
+}

@@ -1780,21 +1780,6 @@
 
   // ── 제안서 작성 (아직 목업) ──
 
-  /**
-   * 회사 제안서 템플릿.
-   * 지금은 자리표시다. 과거 제안서에서 레이아웃을 추려내면 이 목록을 채운다.
-   */
-  const PROPOSAL_TEMPLATES = [
-    { id: 'event',   name: '행사·컨퍼런스형', slides: 42,
-      desc: '개막식·세션 운영이 중심인 사업', tags: ['행사 기획·운영', '국제회의'] },
-    { id: 'startup', name: '창업지원형',      slides: 38,
-      desc: '보육·액셀러레이팅·IR 중심',      tags: ['스타트업 지원', '교육'] },
-    { id: 'promo',   name: '홍보·마케팅형',    slides: 35,
-      desc: '캠페인·콘텐츠 제작이 중심',      tags: ['홍보/마케팅'] },
-    { id: 'blank',   name: '기본형',          slides: 30,
-      desc: '표지·목차·간지만 있는 빈 틀',     tags: ['공통'] }
-  ];
-
   /** 표준 목차 — 실제로는 제안요청서의 평가항목에서 뽑아야 한다 */
   const PROPOSAL_OUTLINE = [
     { no: 'I',    title: '일반현황',      note: '회사 개요·조직·실적',      auto: true },
@@ -1810,6 +1795,7 @@
   ];
 
   let selectedTemplate = null;
+  let pptTemplate = null;     // 서버에 등록된 실제 템플릿
 
   function openProposal() {
     if (!proposeBid) return;
@@ -1824,9 +1810,21 @@
       .filter(Boolean).join(' · ');
 
     renderProposalSpec();
-    renderProposalTemplates();
     renderProposalOutline();
+    renderProposalTemplates();      // 서버 응답 오기 전 자리표시
     renderProposalSelected();
+
+    google.script.run
+      .withSuccessHandler(function (info) {
+        pptTemplate = info;
+        renderProposalTemplates();
+        renderProposalSelected();
+      })
+      .withFailureHandler(function (e) {
+        pptTemplate = { ok: false, reason: e.message };
+        renderProposalTemplates();
+      })
+      .getPptTemplateInfo();
   }
 
   /** 제안서 규격 — 제안요청서에서 읽어야 하지만 아직 연결 전이라 자리만 잡아둔다 */
@@ -1849,23 +1847,25 @@
 
   function renderProposalTemplates() {
     const box = document.getElementById('proposal-templates');
-    box.innerHTML = PROPOSAL_TEMPLATES.map(function (t) {
-      return '<button type="button" class="tpl-card' +
-          (selectedTemplate === t.id ? ' on' : '') + '" data-tpl="' + t.id + '">' +
-        '<span class="tpl-name">' + escapeHtml(t.name) + '</span>' +
-        '<span class="tpl-desc">' + escapeHtml(t.desc) + '</span>' +
-        '<span class="tpl-meta">' + t.slides + '장 · ' +
-          t.tags.map(escapeHtml).join(' · ') + '</span>' +
-      '</button>';
-    }).join('');
 
-    box.querySelectorAll('.tpl-card').forEach(function (c) {
-      c.addEventListener('click', function () {
-        selectedTemplate = c.dataset.tpl;
-        renderProposalTemplates();
-        renderProposalSelected();
-      });
-    });
+    if (!pptTemplate) {
+      box.innerHTML = '<div class="tpl-empty">템플릿을 확인하는 중…</div>';
+      return;
+    }
+    if (!pptTemplate.ok) {
+      box.innerHTML = '<div class="tpl-empty">' + escapeHtml(pptTemplate.reason) +
+        '<br><span class="tpl-hint">스프레드시트 메뉴 → 제안서 → 템플릿 등록 에서 pptx 를 지정해주세요.</span></div>';
+      return;
+    }
+
+    selectedTemplate = 'registered';
+    box.innerHTML =
+      '<div class="tpl-card on">' +
+        '<span class="tpl-name">' + escapeHtml(pptTemplate.name) + '</span>' +
+        '<span class="tpl-desc">등록된 회사 제안서 템플릿</span>' +
+        '<span class="tpl-meta">' + pptTemplate.sizeMb + 'MB · ' +
+          escapeHtml(pptTemplate.updated) + ' 수정</span>' +
+      '</div>';
   }
 
   function renderProposalOutline() {
@@ -1886,9 +1886,44 @@
   }
 
   function renderProposalSelected() {
-    const t = PROPOSAL_TEMPLATES.filter(function (x) { return x.id === selectedTemplate; })[0];
+    const ok = pptTemplate && pptTemplate.ok;
     document.getElementById('proposal-selected').textContent =
-      t ? t.name + ' 선택됨 · ' + t.slides + '장' : '템플릿을 고르세요';
+      ok ? pptTemplate.name : '템플릿이 등록되지 않았습니다';
+    document.getElementById('proposal-generate').disabled = !ok;
+  }
+
+  function generateProposal() {
+    if (!proposeBid || !(pptTemplate && pptTemplate.ok)) return;
+
+    const btn = document.getElementById('proposal-generate');
+    const note = document.getElementById('proposal-selected');
+    btn.disabled = true;
+    btn.textContent = '만드는 중…';
+    note.textContent = '템플릿을 열고 채우는 중입니다. 20초쯤 걸립니다.';
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        downloadBase64(res.name, res.dataBase64);
+        btn.disabled = false;
+        btn.textContent = '초안 다시 만들기';
+        note.textContent = res.name;
+        renderProposalReport(res.report);
+      })
+      .withFailureHandler(function (e) {
+        btn.disabled = false;
+        btn.textContent = '초안 만들기';
+        note.textContent = pptTemplate.name;
+        renderProposalReport(['실패: ' + e.message]);
+      })
+      .generateProposalPpt(proposeBid.no, proposeBid.ord);
+  }
+
+  /** 무엇이 채워졌고 무엇이 빠졌는지 그대로 보여준다 */
+  function renderProposalReport(lines) {
+    const hint = document.getElementById('proposal-outline-hint');
+    hint.innerHTML = (lines || []).map(function (l) {
+      return '<span class="rep-line">' + escapeHtml(l) + '</span>';
+    }).join('');
   }
 
   function initProposal() {
@@ -1899,9 +1934,7 @@
     document.getElementById('proposal-back').addEventListener('click', function () {
       switchTab('propose');
     });
-    document.getElementById('proposal-generate').addEventListener('click', function () {
-      toast('아직 연결되지 않았습니다. API 키를 등록하면 초안 생성이 열립니다.');
-    });
+    document.getElementById('proposal-generate').addEventListener('click', generateProposal);
   }
 
   // ── 표 복사 ──
