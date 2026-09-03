@@ -1151,6 +1151,11 @@
     document.getElementById('step-qual').style.display = 'none';
     document.getElementById('step-forms').style.display = 'none';
     document.getElementById('rfp-status').style.display = 'none';
+
+    // 앞 공고에서 만든 결과 카드를 지운다 — 안 지우면 다른 공고에 그대로 남는다
+    document.querySelectorAll('.gen-result').forEach(function (el) { el.remove(); });
+    document.getElementById('qual-list').innerHTML = '';
+    document.getElementById('form-index').innerHTML = '';
     renderPerfList();
     renderProposePeople();
     renderProposeSelected();
