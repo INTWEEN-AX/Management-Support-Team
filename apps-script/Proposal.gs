@@ -191,13 +191,17 @@ function checkOpenAI() {
       muteHttpExceptions: true
     });
     if (mres.getResponseCode() === 200) {
-      var ids = JSON.parse(mres.getContentText()).data
-        .map(function (m) { return m.id; })
-        .filter(function (id) { return id.indexOf('gpt') === 0 || id.indexOf('o1') === 0; })
-        .sort();
-      lines.push('쓸 수 있는 모델 ' + ids.length + '종:');
-      lines.push('  ' + ids.slice(0, 20).join(', '));
-      if (ids.length > 20) lines.push('  … 외 ' + (ids.length - 20) + '종');
+      var all = JSON.parse(mres.getContentText()).data.map(function (m) { return m.id; });
+      var chat = all.filter(function (id) { return /^(gpt|o\d)/.test(id); });
+
+      // 'gpt-4o-2024-08-06' 같은 날짜 붙은 변형은 접는다 — 고를 때 방해만 된다
+      var base = chat.filter(function (id) {
+        return !/-\d{4}(-\d{2}-\d{2})?$/.test(id);
+      }).sort();
+
+      lines.push('쓸 수 있는 모델 ' + chat.length + '종 ' +
+        '(날짜 변형 제외 ' + base.length + '종):');
+      lines.push('  ' + base.join(', '));
     } else {
       lines.push('모델 목록 조회 실패 (' + mres.getResponseCode() + ')');
     }
