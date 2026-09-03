@@ -218,72 +218,55 @@ function extractQualifications_(text) {
 function getProposalPack(bidNo, bidOrd) {
   var bid = findBidRecord_(bidNo, bidOrd);
 
-  // ① 나라장터 첨부 — 수집할 때 저장해둔 목록을 그대로 쓴다. API 호출 없음.
+  // 나라장터 첨부 — 수집할 때 저장해둔 목록을 그대로 쓴다. API 호출도 파일 다운로드도 없다.
   var notice = (bid.attachments || []).map(function (d) {
     return { name: d.name, ext: d.ext, url: d.url, kindLabel: classifyFormName_(d.name).label };
   });
-
-  // ② 사람이 올린 파일 — 목록만 만든다.
-  //    내용은 읽지 않는다. 실제로 필요한 순간(서식 채우기, 공고문 읽기)에만 연다.
-  var folder = findBidFolder_(bid);
-  var uploads = [];
-  if (folder) {
-    var strays = [];
-    var it = folder.getFiles();
-    while (it.hasNext()) {
-      var f = it.next();
-      var name = f.getName();
-      if (name === BRIEF_CACHE_NAME || name === ANALYSIS_STORE_NAME) continue;
-      if (GENERATED_NAME_RE.test(name)) { strays.push(f); continue; }
-      if (!/\.(hwpx|pdf)$/i.test(name)) continue;
-
-      var ext = name.toLowerCase().replace(/^.*\./, '');
-      uploads.push({
-        name: name,
-        ext: ext,
-        fillable: ext === 'hwpx',      // 채우기는 hwpx 에서만 된다
-        url: f.getUrl(),
-        fileId: f.getId(),
-        kindLabel: classifyFormName_(name).label
-      });
-    }
-    // 예전에 원본과 섞여 저장된 결과물을 하위 폴더로 옮긴다 (한 번만 일어난다)
-    if (strays.length) tidyGeneratedFiles_(folder, strays);
-  }
 
   return JSON.parse(JSON.stringify({
     bid: bid,
     notice: notice,
     noticeFromSheet: notice.length > 0,
-    uploads: uploads,
-    folderUrl: folder ? folder.getUrl() : '',
     company: getCompanyInfo()
   }));
 }
 
+// ─────────────────────────────────────────────────────────────
+// 올린 파일을 메모리에서 처리한다 (드라이브에 저장하지 않는다)
+//
+// 브라우저가 파일 내용을 base64 로 보내면, 여기서 읽거나 채운 뒤
+// 결과를 다시 base64 로 돌려준다. 중간 산출물이 드라이브에 쌓이지 않는다.
+// ─────────────────────────────────────────────────────────────
+
+var UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
+
+function blobFromUpload_(item) {
+  var name = String(item && item.name || '').trim();
+  if (!name) throw new Error('파일 이름이 없습니다.');
+
+  var bytes = Utilities.base64Decode(String(item.dataBase64 || ''));
+  if (bytes.length > UPLOAD_MAX_BYTES) {
+    throw new Error(name + ' 은(는) 너무 큽니다 (' +
+      Math.round(bytes.length / 1024 / 1024) + 'MB). 10MB 이하로 줄여주세요.');
+  }
+  return Utilities.newBlob(bytes, 'application/octet-stream', name);
+}
+
 /**
- * 올린 문서에서 서식 목차와 참가자격을 읽는다. 사용자가 눌렀을 때만 돈다.
- *
- * 글자만 뽑으므로 (hwpx 는 <hp:t> 정규식, pdf 는 변환) 표 구조는 건드리지 않는다.
- * 표는 실제로 채울 때 한 번만 읽으면 된다 — 미리 훑어두면 같은 일을 두 번 하게 된다.
+ * 올린 문서에서 서식 목차와 참가자격을 읽는다.
+ * 글자만 뽑으므로 (hwpx 는 <hp:t> 정규식, pdf 는 변환) 표는 건드리지 않는다.
  */
-function readUploadedDocs(bidNo, bidOrd) {
-  var bid = findBidRecord_(bidNo, bidOrd);
-  var folder = findBidFolder_(bid);
-  if (!folder) throw new Error('올린 문서가 없습니다. 제안요청서를 먼저 올려주세요.');
+function readDocsFromUploads(payload) {
+  var files = (payload && payload.files) || [];
+  if (!files.length) throw new Error('올린 문서가 없습니다.');
 
   var rfp = null, forms = [], quals = [], seen = {}, read = [];
 
-  var it = folder.getFiles();
-  while (it.hasNext()) {
-    var f = it.next();
-    var name = f.getName();
-    if (name === BRIEF_CACHE_NAME || name === ANALYSIS_STORE_NAME) continue;
-    if (GENERATED_NAME_RE.test(name)) continue;
-    if (!/\.(hwpx|pdf)$/i.test(name)) continue;
-
+  files.forEach(function (item) {
+    var name = String(item.name || '');
     try {
-      var text = /\.pdf$/i.test(name) ? pdfToText_(f) : hwpxToText_(f);
+      var blob = blobFromUpload_(item);
+      var text = /\.pdf$/i.test(name) ? pdfBlobToText_(blob) : hwpxBlobToText_(blob);
       var idx = extractFormIndex_(text);
 
       extractQualifications_(text).forEach(function (q) {
@@ -297,10 +280,10 @@ function readUploadedDocs(bidNo, bidOrd) {
       if (idx.length > forms.length) { rfp = name; forms = idx; }
       read.push(name + ' (서식 ' + idx.length + '건)');
     } catch (e) {
-      read.push(name + ' — 읽기 실패');
+      read.push(name + ' — ' + String(e.message || e).split('\n')[0]);
       Logger.log('문서 읽기 실패: ' + name + ' — ' + e);
     }
-  }
+  });
 
   return JSON.parse(JSON.stringify({
     rfp: rfp,
@@ -310,10 +293,111 @@ function readUploadedDocs(bidNo, bidOrd) {
   }));
 }
 
-/** 공고 폴더 (없으면 null — 만들지 않는다) */
-function findBidFolder_(bid) {
-  var it = getBidAttachFolder_().getFoldersByName(bidFolderName_(bid));
-  return it.hasNext() ? it.next() : null;
+/**
+ * 올린 hwpx 의 표를 채워 결과를 돌려준다.
+ * 드라이브에 저장하지 않고 base64 로 반환하면 브라우저가 바로 내려받는다.
+ */
+function fillFormFromUpload(payload) {
+  var name = String(payload && payload.name || '');
+  if (!/\.hwpx$/i.test(name)) {
+    throw new Error('hwpx 만 채울 수 있습니다: ' + name);
+  }
+
+  var perfRows = pickPerfRows_(payload.selection && payload.selection.perfKeys);
+  var hrRows = pickHrRows_(payload.selection && payload.selection.hrNames);
+  var company = getCompanyInfo();
+
+  var parts = Utilities.unzip(blobFromUpload_(payload).setContentType('application/zip'));
+  var report = { company: 0, perf: 0, hr: 0, tables: 0, unfilled: [], overflow: [] };
+  var out = [];
+
+  parts.forEach(function (part) {
+    if (!HWPX_SECTION_RE.test(part.getName())) { out.push(part); return; }
+
+    var doc = XmlService.parse(part.getDataAsString('UTF-8'));
+    var tbls = [];
+    collectTableElements_(doc.getRootElement(), tbls);
+    tbls.forEach(function (tbl) {
+      report.tables++;
+      fillTable_(tbl, { company: company, perf: perfRows, hr: hrRows }, report);
+    });
+
+    out.push(Utilities.newBlob(XmlService.getRawFormat().format(doc),
+      'application/xml', part.getName()));
+  });
+
+  // mimetype 엔트리를 맨 앞으로 (hwpx/OPC 규약)
+  out.sort(function (a, b) {
+    return (a.getName() === 'mimetype' ? 0 : 1) - (b.getName() === 'mimetype' ? 0 : 1);
+  });
+
+  var stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd_HHmm');
+  var outName = name.replace(/\.hwpx$/i, '') + '_작성_' + stamp + '.hwpx';
+
+  return JSON.parse(JSON.stringify({
+    name: outName,
+    dataBase64: Utilities.base64Encode(Utilities.zip(out, outName).getBytes()),
+    report: report,
+    missing: company._missing || [],
+    dummy: company._dummy || []
+  }));
+}
+
+/** XML 이스케이프 되돌리기 (정규식으로 뽑은 텍스트용) */
+function unescapeXml_(s) {
+  return String(s)
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+/** hwpx blob → 본문 텍스트 (글자는 <hp:t> 안에만 있다) */
+function hwpxBlobToText_(blob) {
+  var parts = Utilities.unzip(blob.setContentType('application/zip'));
+  var texts = [];
+  parts.forEach(function (b) {
+    if (!HWPX_SECTION_RE.test(b.getName())) return;
+    var xml = b.getDataAsString('UTF-8');
+    var re = /<hp:t>([\s\S]*?)<\/hp:t>/g, m;
+    while ((m = re.exec(xml)) !== null) texts.push(unescapeXml_(m[1]));
+  });
+  return texts.join(' ');
+}
+
+/** PDF blob → 텍스트 (드라이브에 구글 문서로 잠깐 올렸다가 지운다) */
+function pdfBlobToText_(blob) {
+  var token = ScriptApp.getOAuthToken();
+  var boundary = 'bd' + Utilities.getUuid().replace(/-/g, '');
+  var metadata = {
+    name: 'tmp_read_' + Utilities.getUuid(),
+    mimeType: 'application/vnd.google-apps.document'
+  };
+
+  var head = Utilities.newBlob(
+    '--' + boundary + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' +
+    JSON.stringify(metadata) + '\r\n--' + boundary +
+    '\r\nContent-Type: application/pdf\r\n\r\n').getBytes();
+  var tail = Utilities.newBlob('\r\n--' + boundary + '--').getBytes();
+
+  var res = UrlFetchApp.fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&ocrLanguage=ko',
+    {
+      method: 'post',
+      contentType: 'multipart/related; boundary=' + boundary,
+      payload: head.concat(blob.getBytes()).concat(tail),
+      headers: { Authorization: 'Bearer ' + token },
+      muteHttpExceptions: true
+    });
+
+  if (res.getResponseCode() !== 200) {
+    throw new Error('PDF 변환 실패 HTTP ' + res.getResponseCode());
+  }
+  var docId = JSON.parse(res.getContentText()).id;
+  try {
+    return DocumentApp.openById(docId).getBody().getText();
+  } finally {
+    try { DriveApp.getFileById(docId).setTrashed(true); } catch (e) { /* 무시 */ }
+  }
 }
 
 /** 표 요소만 모은다 (표 안으로는 들어가지 않는다) */
@@ -326,65 +410,6 @@ function collectTableElements_(element, acc) {
 }
 
 
-var ANALYSIS_STORE_NAME = '_분석.json';   // 예전 버전이 남긴 파일 — 목록에서 제외한다
-var GENERATED_FOLDER_NAME = '생성물';
-
-/** 우리가 채워 만든 파일 이름 (원본과 구분해 분석에서 제외한다) */
-var GENERATED_NAME_RE = /_작성_\d{8}_\d{4}\.hwpx$/i;
-
-/** 원본 폴더에 흩어져 있는 결과물을 하위 폴더로 모은다 */
-function tidyGeneratedFiles_(folder, files) {
-  try {
-    var dest = getGeneratedFolder_(folder);
-    files.forEach(function (f) { f.moveTo(dest); });
-    Logger.log('결과물 ' + files.length + '개를 ' + GENERATED_FOLDER_NAME + ' 로 옮김');
-  } catch (e) {
-    Logger.log('결과물 정리 실패(무시): ' + e);
-  }
-}
-
-/** 생성 결과를 담을 하위 폴더 */
-function getGeneratedFolder_(parent) {
-  var it = parent.getFoldersByName(GENERATED_FOLDER_NAME);
-  return it.hasNext() ? it.next() : parent.createFolder(GENERATED_FOLDER_NAME);
-}
-
-
-/**
- * 웹앱에서 사람이 직접 올린 서식을 공고 폴더에 저장한다.
- * @param {Object} payload { bidNo, bidOrd, name, mimeType, dataBase64 }
- */
-function uploadFormFile(payload) {
-  var name = String(payload && payload.name || '').trim();
-  if (!name) throw new Error('파일 이름이 없습니다.');
-
-  if (/\.hwp$/i.test(name)) {
-    throw new Error(
-      '구형 .hwp 는 채울 수 없습니다: ' + name + '\n\n' +
-      '한컴오피스에서 [다른 이름으로 저장] → 파일 형식 hwpx 로 바꾼 뒤 올려주세요.');
-  }
-
-  var bid = findBidRecord_(payload.bidNo, payload.bidOrd);
-  var parent = getBidAttachFolder_();
-  var it = parent.getFoldersByName(bidFolderName_(bid));
-  var folder = it.hasNext() ? it.next() : parent.createFolder(bidFolderName_(bid));
-
-  var bytes = Utilities.base64Decode(String(payload.dataBase64 || ''));
-  var blob = Utilities.newBlob(bytes, payload.mimeType || 'application/octet-stream', name);
-
-  // 같은 이름이 있으면 이전 것을 휴지통으로 (덮어쓰기)
-  var dup = folder.getFilesByName(name);
-  while (dup.hasNext()) dup.next().setTrashed(true);
-
-  var file = folder.createFile(blob);
-
-
-  return JSON.parse(JSON.stringify({
-    name: file.getName(),
-    url: file.getUrl(),
-    folderUrl: folder.getUrl()
-  }));
-}
 
 function formReason_(kind, ext) {
   if (kind === 'reference') return '내용 파악용 문서입니다 — 채우는 서식이 아닙니다';
@@ -494,68 +519,6 @@ function normLabel_(s) {
 
 function isEmptyCell_(s) {
   return /^[\s\-–—_.·]*$/.test(String(s == null ? '' : s));
-}
-
-/**
- * 서식을 채워 새 hwpx 를 만든다.
- * @param {string} fileId    채울 hwpx 의 드라이브 파일 ID
- * @param {Object} selection { perfKeys: [...], hrNames: [...] }
- * @param {string} bidNo     결과 파일을 공고 폴더에 넣기 위한 공고번호
- */
-function generateFilledForm(fileId, selection, bidNo, bidOrd) {
-  var file = DriveApp.getFileById(fileId);
-  if (!/\.hwpx$/i.test(file.getName())) {
-    throw new Error(
-      'hwpx 파일만 채울 수 있습니다: ' + file.getName() +
-      '\n\n한컴오피스에서 [다른 이름으로 저장] → hwpx 로 바꾼 뒤 다시 시도해주세요.');
-  }
-
-  var perfRows = pickPerfRows_(selection && selection.perfKeys);
-  var hrRows = pickHrRows_(selection && selection.hrNames);
-  var company = getCompanyInfo();
-
-  var parts = Utilities.unzip(file.getBlob().setContentType('application/zip'));
-  var report = { company: 0, perf: 0, hr: 0, tables: 0, unfilled: [], overflow: [] };
-  var out = [];
-
-  parts.forEach(function (part) {
-    if (!HWPX_SECTION_RE.test(part.getName())) { out.push(part); return; }
-
-    var doc = XmlService.parse(part.getDataAsString('UTF-8'));
-    var root = doc.getRootElement();
-
-    var tbls = [];
-    collectTableElements_(root, tbls);
-    tbls.forEach(function (tbl) {
-      report.tables++;
-      fillTable_(tbl, { company: company, perf: perfRows, hr: hrRows }, report);
-    });
-
-    var xml = XmlService.getRawFormat().format(doc);
-    out.push(Utilities.newBlob(xml, 'application/xml', part.getName()));
-  });
-
-  // mimetype 엔트리를 맨 앞으로 (hwpx/OPC 규약)
-  out.sort(function (a, b) {
-    return (a.getName() === 'mimetype' ? 0 : 1) - (b.getName() === 'mimetype' ? 0 : 1);
-  });
-
-  var stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd_HHmm');
-  var outName = file.getName().replace(/\.hwpx$/i, '') + '_작성_' + stamp + '.hwpx';
-  var blob = Utilities.zip(out, outName).setName(outName);
-
-  // 결과물은 하위 폴더에 담는다. 원본과 섞이면 다음 분석 때 이것까지 훑게 된다.
-  var parent = file.getParents().hasNext() ? file.getParents().next() : DriveApp.getRootFolder();
-  var saved = getGeneratedFolder_(parent).createFile(blob);
-
-  return JSON.parse(JSON.stringify({
-    name: outName,
-    url: saved.getUrl(),
-    downloadUrl: 'https://drive.google.com/uc?export=download&id=' + saved.getId(),
-    report: report,
-    missing: company._missing || [],
-    dummy: company._dummy || []
-  }));
 }
 
 /** 표 하나를 채운다 — 반복형이면 목록을, 라벨형이면 회사정보를 */

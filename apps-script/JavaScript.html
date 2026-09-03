@@ -1111,8 +1111,7 @@
   let proposeBid = null;
   let proposeGen = 0;
   let proposePerfList = [];
-  let proposeUploads = [];          // 올린 문서 목록
-  const selectedTargets = new Set(); // 채울 문서로 고른 것
+  let uploadedDocs = [];            // 브라우저 메모리에만 있는 올린 파일
   let proposePack = null;           // 자료·서식 묶음
   let briefText = '';
   const selectedPerf = new Set();
@@ -1122,8 +1121,7 @@
     proposeBid = bid;
     proposeGen++;
     proposePerfList = [];
-    proposeUploads = [];
-    selectedTargets.clear();
+    uploadedDocs = [];
     proposePack = null;
     briefText = '';
     selectedPerf.clear();
@@ -1168,7 +1166,6 @@
       .withSuccessHandler(function (res) {
         if (gen !== proposeGen) return;
         proposePack = res;
-        proposeUploads = res.uploads || [];
         renderPack(res);
       })
       .withFailureHandler(function (err) {
@@ -1183,7 +1180,7 @@
   const EXT_ICON = { hwpx: '\u25C6', pdf: '\u25A3', hwp: '\u25C7', zip: '\u25A4' };
 
   function renderPack(res) {
-    // 1단계 — 나라장터 첨부는 '뭐가 있는지' 만 보여준다
+    // 나라장터 첨부는 '뭐가 있는지' 만 보여준다. 파일은 받지 않는다.
     const notice = res.notice || [];
     document.getElementById('notice-hint').textContent =
       notice.length ? notice.length + '건' : '';
@@ -1202,9 +1199,7 @@
         }).join('')
       : '<div class="attach-empty">아직 가져오지 않았습니다.</div>';
 
-    const folder = document.getElementById('attach-folder');
-    if (res.folderUrl) { folder.href = res.folderUrl; folder.style.display = ''; }
-    else { folder.style.display = 'none'; }
+    document.getElementById('attach-folder').style.display = 'none';
 
     const acts = document.getElementById('notice-actions');
     acts.innerHTML = '';
@@ -1214,48 +1209,56 @@
       addAction(acts, 'btn-ghost', '목록 새로고침', loadPack);
     }
 
-    // 2단계 — 올라온 파일 목록. 내용은 읽지 않는다.
-    const ups = res.uploads || [];
+    renderUploadList();
+  }
+
+  /**
+   * 올린 파일 목록.
+   * 파일은 브라우저 메모리에만 있다 — 드라이브에 저장하지 않는다.
+   * 새로고침하면 사라지므로, 그 자리에서 읽고 채우고 내려받는 흐름이다.
+   */
+  function renderUploadList() {
     const status = document.getElementById('rfp-status');
     status.style.display = '';
+    status.innerHTML = '';
 
-    if (!ups.length) {
+    if (!uploadedDocs.length) {
       status.className = 'checklist warn';
       status.innerHTML = '<span class="check-icon warn">!</span>' +
         '<span>제안요청서를 올려야 서식을 채울 수 있습니다.</span>';
       return;
     }
 
-    const fillable = ups.filter(function (u) { return u.fillable; }).length;
+    const fillable = uploadedDocs.filter(function (u) { return u.fillable; }).length;
     status.className = 'checklist ok';
     status.innerHTML =
       '<span class="check-icon ok">✓</span>' +
-      '<span>올린 문서 ' + ups.length + '건 · 채울 수 있는 hwpx ' + fillable + '건<br>' +
+      '<span>올린 문서 ' + uploadedDocs.length + '건 · 채울 수 있는 hwpx ' + fillable + '건<br>' +
       '<span class="upload-hint">서식이 들어 있는 문서만 체크하세요. ' +
       '공고문·안내문은 채울 표가 없어 빈 결과물만 생깁니다.</span></span>';
 
-    // 어느 문서를 채울지 고르게 한다
     const list = document.createElement('div');
     list.className = 'target-list';
-    list.innerHTML = ups.map(function (u, i) {
+    list.innerHTML = uploadedDocs.map(function (u, i) {
+      const size = (u.size / 1024).toFixed(0) + 'KB';
       if (!u.fillable) {
         return '<div class="target-row readonly">' +
           '<span class="target-mark">읽기만</span>' +
           '<span class="target-name">' + escapeHtml(u.name) + '</span>' +
+          '<span class="target-size">' + size + '</span>' +
         '</div>';
       }
-      const checked = selectedTargets.has(u.fileId) ? ' checked' : '';
       return '<label class="target-row">' +
-        '<input type="checkbox" data-id="' + escapeHtml(u.fileId) + '"' + checked + '>' +
+        '<input type="checkbox" data-idx="' + i + '"' + (u.checked ? ' checked' : '') + '>' +
         '<span class="target-name">' + escapeHtml(u.name) + '</span>' +
+        '<span class="target-size">' + size + '</span>' +
       '</label>';
     }).join('');
     status.appendChild(list);
 
     list.querySelectorAll('input[type=checkbox]').forEach(function (cb) {
       cb.addEventListener('change', function () {
-        if (cb.checked) selectedTargets.add(cb.dataset.id);
-        else selectedTargets.delete(cb.dataset.id);
+        uploadedDocs[Number(cb.dataset.idx)].checked = cb.checked;
         renderProposeSelected();
       });
     });
@@ -1263,11 +1266,20 @@
     const box = document.createElement('div');
     box.className = 'forms-actions';
     addAction(box, 'btn-ghost', '공고문에서 서식·참가자격 읽기', readDocs);
+    addAction(box, 'btn-ghost', '올린 파일 비우기', function () {
+      uploadedDocs = [];
+      document.getElementById('upload-log').innerHTML = '';
+      document.getElementById('step-qual').style.display = 'none';
+      document.getElementById('step-forms').style.display = 'none';
+      renderUploadList();
+      renderProposeSelected();
+    });
     status.appendChild(box);
   }
 
   /** 올린 문서를 읽어 서식 목차와 참가자격을 뽑는다 (사용자가 누를 때만) */
   function readDocs() {
+    if (!uploadedDocs.length) return toast('먼저 문서를 올려주세요.');
     const gen = proposeGen;
     const status = document.getElementById('rfp-status');
     const saved = status.innerHTML;
@@ -1278,9 +1290,8 @@
     google.script.run
       .withSuccessHandler(function (out) {
         if (gen !== proposeGen) return;
-        status.className = 'checklist ok';
-        status.innerHTML = '<span class="check-icon ok">✓</span>' +
-          '<span>' + escapeHtml((out.read || []).join(' · ')) + '</span>';
+        renderUploadList();
+        toast((out.read || []).join(' · '));
         renderQualifications(out.quals || []);
         renderFormIndex({ forms: out.forms || [], tables: [], summary: {
           fillable: (out.forms || []).filter(function (f) { return f.fillable; }).length
@@ -1291,7 +1302,11 @@
         status.innerHTML = saved;
         toast(String(err.message || err).split(String.fromCharCode(10))[0]);
       })
-      .readUploadedDocs(proposeBid.no, proposeBid.ord);
+      .readDocsFromUploads({ files: uploadedDocs.map(toPayload) });
+  }
+
+  function toPayload(u) {
+    return { name: u.name, dataBase64: u.dataBase64 };
   }
 
   const KIND_BADGE = { perf: '실적', hr: '인력', company: '회사정보',
@@ -1344,7 +1359,6 @@
       .withSuccessHandler(function (res) {
         if (gen !== proposeGen) return;
         proposePack = res;
-        proposeUploads = res.uploads || [];
         renderPack(res);
       })
       .withFailureHandler(function (err) {
@@ -1398,7 +1412,6 @@
   }
 
   function handleFiles(files) {
-    if (!proposeBid) return toast('공고를 먼저 열어주세요.');
     files.forEach(function (file) {
       if (/\.hwp$/i.test(file.name)) {
         logUpload(file.name, 'fail',
@@ -1409,24 +1422,31 @@
         logUpload(file.name, 'fail', 'hwpx 또는 pdf 만 올릴 수 있습니다');
         return;
       }
-      logUpload(file.name, 'busy', '올리는 중…');
+      if (file.size > 10 * 1024 * 1024) {
+        logUpload(file.name, 'fail',
+          Math.round(file.size / 1024 / 1024) + 'MB — 10MB 이하로 줄여주세요');
+        return;
+      }
 
+      logUpload(file.name, 'busy', '읽는 중…');
       const reader = new FileReader();
       reader.onload = function () {
-        const b64 = String(reader.result).split(',')[1] || '';
-        google.script.run
-          .withSuccessHandler(function () {
-            logUpload(file.name, 'ok', '올렸습니다');
-            loadPack();
-          })
-          .withFailureHandler(function (err) {
-            logUpload(file.name, 'fail', String(err.message || err).split('\n')[0]);
-          })
-          .uploadFormFile({
-            bidNo: proposeBid.no, bidOrd: proposeBid.ord,
-            name: file.name, mimeType: file.type, dataBase64: b64
-          });
+        // 파일은 브라우저 메모리에만 둔다. 드라이브에 저장하지 않는다.
+        const ext = file.name.toLowerCase().replace(/^.*\./, '');
+        uploadedDocs = uploadedDocs.filter(function (u) { return u.name !== file.name; });
+        uploadedDocs.push({
+          name: file.name,
+          ext: ext,
+          size: file.size,
+          fillable: ext === 'hwpx',
+          checked: ext === 'hwpx',
+          dataBase64: String(reader.result).split(',')[1] || ''
+        });
+        logUpload(file.name, 'ok', '준비됨');
+        renderUploadList();
+        renderProposeSelected();
       };
+      reader.onerror = function () { logUpload(file.name, 'fail', '파일을 읽지 못했습니다'); };
       reader.readAsDataURL(file);
     });
   }
@@ -1560,7 +1580,8 @@
 
   function renderProposeSelected() {
     const parts = [];
-    if (selectedTargets.size) parts.push('문서 ' + selectedTargets.size + '개');
+    const docs = uploadedDocs.filter(function (u) { return u.checked; }).length;
+    if (docs) parts.push('문서 ' + docs + '개');
     if (selectedPerf.size) parts.push('실적 ' + selectedPerf.size + '건');
     if (selectedHR.size) parts.push('인력 ' + selectedHR.size + '명');
     document.getElementById('propose-selected').textContent =
@@ -1570,17 +1591,10 @@
   // ── 3단계: 서식 생성 ──
 
   function generateForms() {
-    // 고른 문서만 채운다. 표는 채우면서 읽으므로 미리 훑을 필요가 없다.
-    const targets = proposeUploads.filter(function (u) {
-      return u.fillable && selectedTargets.has(u.fileId);
-    });
-    if (!targets.length) {
-      toast('2단계에서 채울 문서를 먼저 체크해주세요.');
-      return;
-    }
+    const targets = uploadedDocs.filter(function (u) { return u.fillable && u.checked; });
+    if (!targets.length) return toast('2단계에서 채울 문서를 먼저 체크해주세요.');
     if (!selectedPerf.size && !selectedHR.size) {
-      toast('실적이나 인력을 먼저 선택해주세요.');
-      return;
+      return toast('실적이나 인력을 먼저 선택해주세요.');
     }
 
     const selection = {
@@ -1594,18 +1608,39 @@
 
     const results = [];
     let done = 0;
-    targets.forEach(function (f) {
+    targets.forEach(function (u) {
       google.script.run
         .withSuccessHandler(function (out) {
-          results.push({ ok: true, form: f, out: out });
+          results.push({ ok: true, form: u, out: out });
           if (++done === targets.length) finishGenerate(results, btn);
         })
         .withFailureHandler(function (err) {
-          results.push({ ok: false, form: f, error: String(err.message || err) });
+          results.push({ ok: false, form: u, error: String(err.message || err) });
           if (++done === targets.length) finishGenerate(results, btn);
         })
-        .generateFilledForm(f.fileId, selection, proposeBid.no, proposeBid.ord);
+        .fillFormFromUpload({
+          name: u.name, dataBase64: u.dataBase64, selection: selection
+        });
     });
+  }
+
+  /** base64 결과를 그대로 파일로 내려받는다 (드라이브를 거치지 않는다) */
+  function downloadBase64(name, b64) {
+    try {
+      const bin = atob(b64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([arr], { type: 'application/octet-stream' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 2000);
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 
   function finishGenerate(results, btn) {
@@ -1619,7 +1654,7 @@
       '<div class="gen-result">' +
         '<div class="gen-title">서식 ' + ok.length + '건 생성' +
           (fail.length ? ' · ' + fail.length + '건 실패' : '') + '</div>' +
-        ok.map(function (r) {
+        ok.map(function (r, i) {
           const rep = r.out.report || {};
           const bits = [];
           if (rep.perf) bits.push('실적 ' + rep.perf + '행');
@@ -1634,8 +1669,7 @@
             '<div class="gen-meta">' + (bits.join(' · ') || '채워진 칸 없음') + '</div>' +
             (over ? '<div class="gen-warn">' + over + '</div>' : '') +
             '<div class="gen-links">' +
-              '<a class="btn-ghost" href="' + escapeHtml(r.out.url) + '" target="_blank" rel="noopener">열기</a>' +
-              '<a class="btn-primary" href="' + escapeHtml(r.out.downloadUrl) + '" target="_blank" rel="noopener">내려받기</a>' +
+              '<button type="button" class="btn-primary gen-dl" data-i="' + i + '">내려받기</button>' +
             '</div>' +
           '</div>';
         }).join('') +
@@ -1657,7 +1691,19 @@
       '</div>';
 
     document.getElementById('step-forms').insertAdjacentHTML('afterend', html);
-    toast(ok.length ? '서식을 생성했습니다.' : '서식 생성에 실패했습니다.');
+
+    // 만들어지자마자 한 번 내려받고, 버튼으로 다시 받을 수도 있게 한다
+    document.querySelectorAll('.gen-dl').forEach(function (b) {
+      b.addEventListener('click', function () {
+        const r = ok[Number(b.dataset.i)];
+        if (!downloadBase64(r.out.name, r.out.dataBase64)) {
+          toast('브라우저가 내려받기를 막았습니다. 팝업 차단을 풀어주세요.');
+        }
+      });
+    });
+    ok.forEach(function (r) { downloadBase64(r.out.name, r.out.dataBase64); });
+
+    toast(ok.length ? '서식을 생성해 내려받았습니다.' : '서식 생성에 실패했습니다.');
   }
 
   // ── 표 복사 ──
