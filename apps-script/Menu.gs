@@ -54,6 +54,9 @@ function onOpen() {
 
   ui.createMenu('제안서')
     .addItem('OpenAI 연결 확인', 'checkOpenAI')
+    .addSeparator()
+    .addItem('템플릿 등록 (pptx)', 'setupPptTemplate')
+    .addItem('템플릿 진단', 'diagnosePptTemplate')
     .addToUi();
 
   ui.createMenu('생일메일')
