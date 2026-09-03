@@ -1374,6 +1374,53 @@
     margin-top: 8px;
   }
 
+  /* 채울 문서 고르기 */
+  .upload-hint {
+    display: block;
+    margin-top: 4px;
+    font-size: var(--fs-caption);
+    color: var(--grey-2);
+    font-weight: var(--fw-regular);
+  }
+  .target-list {
+    width: 100%;
+    margin-top: 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--background);
+    overflow: hidden;
+  }
+  .target-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: var(--fs-p);
+    cursor: pointer;
+  }
+  .target-row:last-child { border-bottom: none; }
+  .target-row:hover { background: var(--grey-5); }
+  .target-row.readonly { cursor: default; color: var(--grey-2); }
+  .target-row.readonly:hover { background: transparent; }
+  .target-row input { width: 16px; height: 16px; accent-color: var(--primary-1); }
+  .target-mark {
+    flex: none;
+    font-size: var(--fs-caption);
+    line-height: 18px;
+    padding: 0 7px;
+    color: var(--grey-2);
+    background: var(--grey-5);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+  }
+  .target-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   /* 분석 실행 */
   .analyze-bar {
     display: flex;

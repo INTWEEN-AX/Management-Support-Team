@@ -1112,6 +1112,7 @@
   let proposeGen = 0;
   let proposePerfList = [];
   let proposeUploads = [];          // 올린 문서 목록
+  const selectedTargets = new Set(); // 채울 문서로 고른 것
   let proposePack = null;           // 자료·서식 묶음
   let briefText = '';
   const selectedPerf = new Set();
@@ -1122,6 +1123,7 @@
     proposeGen++;
     proposePerfList = [];
     proposeUploads = [];
+    selectedTargets.clear();
     proposePack = null;
     briefText = '';
     selectedPerf.clear();
@@ -1228,13 +1230,36 @@
     status.className = 'checklist ok';
     status.innerHTML =
       '<span class="check-icon ok">✓</span>' +
-      '<span>올린 문서 ' + ups.length + '건 (채울 수 있는 hwpx ' + fillable + '건)' +
-      '<span class="check-pending">' + ups.map(function (u) {
-        return '<span class="block-file">' + escapeHtml(u.name) +
-               (u.fillable ? '' : ' · 읽기만') + '</span>';
-      }).join('') + '</span></span>';
+      '<span>올린 문서 ' + ups.length + '건 · 채울 수 있는 hwpx ' + fillable + '건<br>' +
+      '<span class="upload-hint">서식이 들어 있는 문서만 체크하세요. ' +
+      '공고문·안내문은 채울 표가 없어 빈 결과물만 생깁니다.</span></span>';
 
-    // 공고문에서 서식 목차·참가자격을 읽는 건 선택 사항 — 누를 때만 돈다
+    // 어느 문서를 채울지 고르게 한다
+    const list = document.createElement('div');
+    list.className = 'target-list';
+    list.innerHTML = ups.map(function (u, i) {
+      if (!u.fillable) {
+        return '<div class="target-row readonly">' +
+          '<span class="target-mark">읽기만</span>' +
+          '<span class="target-name">' + escapeHtml(u.name) + '</span>' +
+        '</div>';
+      }
+      const checked = selectedTargets.has(u.fileId) ? ' checked' : '';
+      return '<label class="target-row">' +
+        '<input type="checkbox" data-id="' + escapeHtml(u.fileId) + '"' + checked + '>' +
+        '<span class="target-name">' + escapeHtml(u.name) + '</span>' +
+      '</label>';
+    }).join('');
+    status.appendChild(list);
+
+    list.querySelectorAll('input[type=checkbox]').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        if (cb.checked) selectedTargets.add(cb.dataset.id);
+        else selectedTargets.delete(cb.dataset.id);
+        renderProposeSelected();
+      });
+    });
+
     const box = document.createElement('div');
     box.className = 'forms-actions';
     addAction(box, 'btn-ghost', '공고문에서 서식·참가자격 읽기', readDocs);
@@ -1535,6 +1560,7 @@
 
   function renderProposeSelected() {
     const parts = [];
+    if (selectedTargets.size) parts.push('문서 ' + selectedTargets.size + '개');
     if (selectedPerf.size) parts.push('실적 ' + selectedPerf.size + '건');
     if (selectedHR.size) parts.push('인력 ' + selectedHR.size + '명');
     document.getElementById('propose-selected').textContent =
@@ -1544,10 +1570,12 @@
   // ── 3단계: 서식 생성 ──
 
   function generateForms() {
-    // 올린 hwpx 를 그대로 채운다. 표는 채우면서 읽으므로 미리 훑을 필요가 없다.
-    const targets = proposeUploads.filter(function (u) { return u.fillable; });
+    // 고른 문서만 채운다. 표는 채우면서 읽으므로 미리 훑을 필요가 없다.
+    const targets = proposeUploads.filter(function (u) {
+      return u.fillable && selectedTargets.has(u.fileId);
+    });
     if (!targets.length) {
-      toast('채울 수 있는 hwpx가 없습니다. 2단계에서 제안요청서를 hwpx로 올려주세요.');
+      toast('2단계에서 채울 문서를 먼저 체크해주세요.');
       return;
     }
     if (!selectedPerf.size && !selectedHR.size) {
