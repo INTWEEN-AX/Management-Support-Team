@@ -1159,6 +1159,7 @@
     fillBtn.textContent = '서식 자동작성';
     fillBtn.className = 'btn-primary';
     document.getElementById('go-proposal').style.display = 'none';
+    rfpBodyText = '';
     document.getElementById('qual-list').innerHTML = '';
     document.getElementById('form-index').innerHTML = '';
     renderPerfList();
@@ -1331,6 +1332,7 @@
       .withSuccessHandler(function (out) {
         if (gen !== proposeGen) return;
         renderUploadList();
+        rfpBodyText = out.bodyText || '';
         toast((out.read || []).join(' · '));
         renderQualifications(out.quals || []);
         renderFormIndex({ forms: out.forms || [], tables: [], summary: {
@@ -1796,6 +1798,7 @@
 
   let selectedTemplate = null;
   let pptTemplate = null;     // 서버에 등록된 실제 템플릿
+  let rfpBodyText = '';       // 읽은 제안요청서 본문 — 제안서 기획 재료
 
   function openProposal() {
     if (!proposeBid) return;
@@ -1899,7 +1902,9 @@
     const note = document.getElementById('proposal-selected');
     btn.disabled = true;
     btn.textContent = '만드는 중…';
-    note.textContent = '템플릿을 열고 채우는 중입니다. 20초쯤 걸립니다.';
+    note.textContent = rfpBodyText
+      ? '공고문을 읽고 구성을 짜는 중입니다. 1분정도 걸립니다.'
+      : '제안요청서 없이 공고 정보만으로 짜는 중입니다. 1분정도 걸립니다.';
 
     google.script.run
       .withSuccessHandler(function (res) {
@@ -1915,7 +1920,7 @@
         note.textContent = pptTemplate.name;
         renderProposalReport(['실패: ' + e.message]);
       })
-      .generateProposalPpt(proposeBid.no, proposeBid.ord);
+      .composeProposalPpt(proposeBid.no, proposeBid.ord, rfpBodyText);
   }
 
   /** 무엇이 채워졌고 무엇이 빠졌는지 그대로 보여준다 */

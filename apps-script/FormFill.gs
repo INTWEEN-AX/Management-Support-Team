@@ -261,6 +261,7 @@ function readDocsFromUploads(payload) {
   if (!files.length) throw new Error('올린 문서가 없습니다.');
 
   var rfp = null, forms = [], quals = [], seen = {}, read = [];
+  var bodyText = '';
 
   files.forEach(function (item) {
     var name = String(item.name || '');
@@ -278,6 +279,8 @@ function readDocsFromUploads(payload) {
       });
 
       if (idx.length > forms.length) { rfp = name; forms = idx; }
+      // 가장 긴 본문을 제안서 기획 재료로 남긴다
+      if (text && text.length > bodyText.length) bodyText = text;
       read.push(name + ' (서식 ' + idx.length + '건)');
     } catch (e) {
       read.push(name + ' — ' + String(e.message || e).split('\n')[0]);
@@ -289,7 +292,9 @@ function readDocsFromUploads(payload) {
     rfp: rfp,
     forms: forms,
     quals: quals.sort(function (a, b) { return (b.numeric ? 1 : 0) - (a.numeric ? 1 : 0); }),
-    read: read
+    read: read,
+    // 제안서 기획에 쓸 본문. 리 토스 비용이 여기서 정해지므로 잘라서 보낸다
+    bodyText: bodyText.slice(0, 20000)
   }));
 }
 
