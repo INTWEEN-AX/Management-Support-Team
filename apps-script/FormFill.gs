@@ -218,9 +218,12 @@ function extractQualifications_(text) {
 function getProposalPack(bidNo, bidOrd) {
   var bid = findBidRecord_(bidNo, bidOrd);
 
-  // ① 나라장터 첨부 — 목록만 가져온다. 파일은 받지 않는다.
-  //    hwp 가 대부분이라 받아봐야 읽지 못하고, 내려받기+압축해제가 느리기만 하다.
-  var notice = listNoticeAttachmentsCached_(bid.no);
+  // ① 나라장터 첨부 — 수집할 때 이미 저장해둔 목록을 그대로 쓴다.
+  //    화면을 열 때마다 API 를 치면 몇 초씩 걸리는데, 같은 정보를 이미 갖고 있다.
+  var notice = (bid.attachments || []).map(function (d) {
+    return { name: d.name, ext: d.ext, url: d.url, kindLabel: classifyFormName_(d.name).label };
+  });
+  var noticeFromSheet = notice.length > 0;
 
   // ② 사람이 올린 파일만 분석 대상
   var folder = findBidFolder_(bid);
@@ -296,6 +299,7 @@ function getProposalPack(bidNo, bidOrd) {
     notice: notice,
     uploads: uploads,
     folderUrl: folder ? folder.getUrl() : '',
+    noticeFromSheet: noticeFromSheet,
     rfp: rfp,
     forms: forms,
     tables: tables,
@@ -314,41 +318,6 @@ function getProposalPack(bidNo, bidOrd) {
 function findBidFolder_(bid) {
   var it = getBidAttachFolder_().getFoldersByName(bidFolderName_(bid));
   return it.hasNext() ? it.next() : null;
-}
-
-/**
- * 나라장터 첨부 '목록'만. 파일은 받지 않는다.
- * 같은 공고를 다시 열 때 API 를 또 치지 않도록 캐시한다.
- */
-function listNoticeAttachmentsCached_(bidNo) {
-  var key = 'ntc_' + bidNo;
-  var cache = CacheService.getScriptCache();
-
-  var hit = cache.get(key);
-  if (hit) {
-    try { return JSON.parse(hit); } catch (e) { /* 깨졌으면 다시 */ }
-  }
-
-  var out = [];
-  try {
-    var items = fetchBidByNo_(bidNo);
-    if (items.length) {
-      extractSpecDocs_(items[0]).forEach(function (d) {
-        var ext = String(d.name).toLowerCase().replace(/^.*\./, '');
-        out.push({
-          name: d.name,
-          ext: ext,
-          url: d.url,
-          kindLabel: classifyFormName_(d.name).label
-        });
-      });
-    }
-  } catch (e) {
-    Logger.log('첨부 목록 조회 실패: ' + e);
-  }
-
-  try { cache.put(key, JSON.stringify(out), 6 * 60 * 60); } catch (e) { /* 무시 */ }
-  return out;
 }
 
 /**
@@ -871,4 +840,29 @@ function pickHrRows_(names) {
         joinDate: r.joinDate || ''
       };
     });
+}
+
+/**
+ * 첨부 목록을 나라장터에서 다시 받아 시트에 채워 넣는다.
+ * '첨부목록' 컬럼이 생기기 전에 수집된 공고를 위한 보정용.
+ */
+function refreshNoticeAttachments(bidNo, bidOrd) {
+  var bid = findBidRecord_(bidNo, bidOrd);
+  var items = fetchBidByNo_(bid.no);
+  if (!items.length) throw new Error('나라장터에서 공고를 찾지 못했습니다: ' + bid.no);
+
+  var docs = extractSpecDocs_(items[0]);
+  var sheet = getBidSheet_();
+  var values = sheet.getDataRange().getValues();
+  var head = values[0].map(function (h) { return String(h == null ? '' : h).replace(/\s+/g, ''); });
+  var noCol = head.indexOf('공고번호');
+  var attCol = head.indexOf('첨부목록');
+  if (noCol === -1 || attCol === -1) throw new Error('시트 머리글을 찾지 못했습니다.');
+
+  for (var r = 1; r < values.length; r++) {
+    if (String(values[r][noCol]).trim() !== String(bid.no).trim()) continue;
+    sheet.getRange(r + 1, attCol + 1).setValue(serializeSpecDocs_(docs));
+    break;
+  }
+  return getProposalPack(bidNo, bidOrd);
 }

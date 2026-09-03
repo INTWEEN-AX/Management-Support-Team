@@ -1206,7 +1206,11 @@
 
     const acts = document.getElementById('notice-actions');
     acts.innerHTML = '';
-    addAction(acts, 'btn-ghost', '목록 새로고침', loadPack);
+    if (!res.noticeFromSheet) {
+      addAction(acts, 'btn-primary', '나라장터에서 첨부 목록 가져오기', refreshNotice);
+    } else {
+      addAction(acts, 'btn-ghost', '목록 새로고침', loadPack);
+    }
 
     // 2단계 — 올라온 hwpx 상태
     const status = document.getElementById('rfp-status');
@@ -1287,6 +1291,29 @@
           (KIND_BADGE[f.kind] || f.kindLabel) + '</span>' +
       '</div>';
     }).join('');
+  }
+
+  /** 첨부목록 칸이 생기기 전에 수집된 공고 — 한 번만 나라장터에서 받아 채운다 */
+  function refreshNotice() {
+    const gen = proposeGen;
+    document.getElementById('notice-list').innerHTML =
+      '<div class="attach-empty">나라장터에서 가져오는 중…</div>';
+    document.getElementById('notice-actions').innerHTML = '';
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (gen !== proposeGen) return;
+        proposePack = res;
+        proposeForms = res.tables || [];
+        renderPack(res);
+      })
+      .withFailureHandler(function (err) {
+        if (gen !== proposeGen) return;
+        document.getElementById('notice-list').innerHTML =
+          '<div class="attach-empty">가져오지 못했습니다.<br>' +
+          escapeHtml(err.message || err) + '</div>';
+      })
+      .refreshNoticeAttachments(proposeBid.no, proposeBid.ord);
   }
 
   function addAction(parent, cls, label, onClick) {

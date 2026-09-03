@@ -63,7 +63,7 @@ var BID_MAX_PAGES = 10;      // 안전장치 (업무구분당 최대 3,000건)
 var BID_HEADERS = [
   '수집일시', '공고번호', '차수', '업무구분', '공고명', '공고기관', '수요기관',
   '계약방법', '입찰방식', '공고일시', '마감일시', '개찰일시',
-  '배정예산', '추정가격', '매칭키워드', '공고URL'
+  '배정예산', '추정가격', '매칭키워드', '공고URL', '첨부목록'
 ];
 
 // ─────────────────────────────────────────────────────────────
@@ -183,8 +183,28 @@ function getBidSheet_() {
     sheet.appendRow(BID_HEADERS);
     sheet.setFrozenRows(1);
     sheet.getRange(1, 1, 1, BID_HEADERS.length).setFontWeight('bold');
+  } else {
+    ensureBidHeaders_(sheet);
   }
   return sheet;
+}
+
+/**
+ * 컬럼을 나중에 추가해도 기존 시트가 그대로 동작하도록 머리글을 맞춘다.
+ * 값은 건드리지 않고 빠진 머리글만 뒤에 덧붙인다.
+ */
+function ensureBidHeaders_(sheet) {
+  var lastCol = Math.max(1, sheet.getLastColumn());
+  var head = sheet.getRange(1, 1, 1, lastCol).getValues()[0]
+    .map(function (h) { return String(h == null ? '' : h).replace(/\s+/g, ''); });
+
+  var missing = BID_HEADERS.filter(function (h) {
+    return head.indexOf(h.replace(/\s+/g, '')) === -1;
+  });
+  if (!missing.length) return;
+
+  sheet.getRange(1, lastCol + 1, 1, missing.length)
+    .setValues([missing]).setFontWeight('bold');
 }
 
 /** 이미 저장된 공고의 키(공고번호-차수) 집합 */
@@ -355,7 +375,9 @@ function collectBids() {
             toNumber_(pick_(it, ['asignBdgtAmt'])),
             toNumber_(pick_(it, ['presmptPrce'])),
             hits.join(' '),
-            pick_(it, ['bidNtceDtlUrl', 'bidNtceUrl'])
+            pick_(it, ['bidNtceDtlUrl', 'bidNtceUrl']),
+            // 첨부 목록을 지금 저장해두면, 나중에 공고를 열 때 API 를 다시 칠 필요가 없다
+            serializeSpecDocs_(extractSpecDocs_(it))
           ]);
         });
       } catch (e) {
@@ -540,6 +562,7 @@ function getBidData() {
       budget: toNumber_(col(row, '배정예산')),
       estimate: toNumber_(col(row, '추정가격')),
       keywords: String(col(row, '매칭키워드') || ''),
+      attachments: parseSpecDocs_(col(row, '첨부목록')),
       url: String(col(row, '공고URL') || '')
     });
   }
@@ -677,6 +700,32 @@ function extractSpecDocs_(item) {
     });
   }
   return docs;
+}
+
+/**
+ * 첨부 목록을 시트 한 칸에 담는다.
+ * 수집할 때 이미 받아온 정보라 저장해두면 조회할 때 API 를 다시 칠 필요가 없다.
+ * 형식: 파일명|URL 을 줄바꿈으로 구분 (JSON 보다 시트에서 눈으로 보기 쉽다)
+ */
+function serializeSpecDocs_(docs) {
+  return (docs || []).map(function (d) {
+    return String(d.name).replace(/[|\r\n]/g, ' ') + '|' +
+           String(d.url).replace(/[|\r\n]/g, '');
+  }).join('\n');
+}
+
+/** 시트에 저장된 첨부 목록을 되돌린다 */
+function parseSpecDocs_(text) {
+  return String(text == null ? '' : text).split(/\r?\n/)
+    .map(function (line) {
+      var i = line.lastIndexOf('|');
+      if (i < 1) return null;
+      var name = line.slice(0, i).trim();
+      var url = line.slice(i + 1).trim();
+      if (!name) return null;
+      return { name: name, url: url, ext: name.toLowerCase().replace(/^.*\./, '') };
+    })
+    .filter(Boolean);
 }
 
 /** 첨부를 저장할 드라이브 폴더 (없으면 만들고 기억) */
