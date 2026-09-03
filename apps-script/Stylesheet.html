@@ -199,7 +199,7 @@
   /* 대신 심볼을 화면 한가운데 옅게 깔아 어느 화면에서나 인트윈이 남게 한다.
      카드가 흰 배경이라 뒤에 두면 가려진다 — 앞에 두되 글자를 방해하지 않을
      만큼만 진하게 한다 */
-  body.subpage::after {
+  body::after {
     content: '';
     position: fixed;
     top: 50%;
@@ -212,8 +212,15 @@
     z-index: 5;
     pointer-events: none;
   }
+  /* 홈은 위쪽에 진짜 로고가 있다 — 워터마크를 아래로 내려 메아리처럼
+     겹쳐 보이지 않게 한다 */
+  body:not(.subpage)::after {
+    top: 66%;
+    width: min(68vw, 680px);
+  }
+
   @media (max-width: 768px) {
-    body.subpage::after { width: 74vw; opacity: .07; }
+    body::after { width: 74vw; opacity: .07; }
   }
   @media print {
     body.subpage::after { display: none; }
@@ -248,11 +255,16 @@
   }
 
   .brand-tagline {
-    font-size: var(--fs-h4);
-    line-height: var(--lh-h4);
+    font-size: var(--fs-h3);
+    line-height: 1.65;
     color: var(--grey-2);
     font-weight: var(--fw-regular);
-    letter-spacing: -.005em;
+    letter-spacing: -.01em;
+    word-break: keep-all;
+  }
+  .brand-tagline strong {
+    font-weight: var(--fw-bold);
+    color: var(--primary-1);
   }
   .brand-tagline .sep {
     color: var(--primary-4);
