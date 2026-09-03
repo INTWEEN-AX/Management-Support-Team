@@ -1660,10 +1660,27 @@
           if (rep.perf) bits.push('실적 ' + rep.perf + '행');
           if (rep.hr) bits.push('인력 ' + rep.hr + '행');
           if (rep.company) bits.push('회사정보 ' + rep.company + '칸');
-          const over = (rep.overflow || []).map(function (o) {
+
+          const warns = (rep.overflow || []).map(function (o) {
             return '⚠ ' + (o.kind === 'perf' ? '실적' : '인력') + ' ' + o.total +
-                   '건 중 ' + o.filled + '건만 들어갔습니다 (표에 빈 행 부족)';
-          }).join('<br>');
+                   '건 중 ' + o.filled + '건만 들어갔습니다 (표에 빈 행이 모자랍니다)';
+          });
+
+          // 골랐는데 넣을 표가 없으면 그 사실을 분명히 알린다
+          const found = rep.foundTables || [];
+          if (selectedPerf.size && !rep.perf && found.indexOf('perf') === -1) {
+            warns.push('⚠ 실적 ' + selectedPerf.size + '건을 골랐지만 이 문서에 ' +
+              '실적표가 없어 넣지 못했습니다. 표 머리글에 과업명·발주처·계약금액 같은 ' +
+              '칸이 있는 서식이어야 합니다.');
+          }
+          if (selectedHR.size && !rep.hr && found.indexOf('hr') === -1) {
+            warns.push('⚠ 인력 ' + selectedHR.size + '명을 골랐지만 이 문서에 ' +
+              '인력표가 없어 넣지 못했습니다.');
+          }
+          if (!rep.tables) {
+            warns.push('⚠ 이 문서에는 표가 없습니다. 서식이 맞는지 확인해주세요.');
+          }
+          const over = warns.join('<br>');
           return '<div class="gen-row">' +
             '<div class="gen-name">' + escapeHtml(r.out.name) + '</div>' +
             '<div class="gen-meta">' + (bits.join(' · ') || '채워진 칸 없음') + '</div>' +

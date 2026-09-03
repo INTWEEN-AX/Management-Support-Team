@@ -308,7 +308,8 @@ function fillFormFromUpload(payload) {
   var company = getCompanyInfo();
 
   var parts = Utilities.unzip(blobFromUpload_(payload).setContentType('application/zip'));
-  var report = { company: 0, perf: 0, hr: 0, tables: 0, unfilled: [], overflow: [] };
+  var report = { company: 0, perf: 0, hr: 0, tables: 0,
+                 unfilled: [], overflow: [], emptyTables: [], foundTables: [] };
   var out = [];
 
   parts.forEach(function (part) {
@@ -530,23 +531,45 @@ function fillTable_(tbl, data, report) {
     return tr.getChildren().filter(function (c) { return c.getName() === 'tc'; });
   });
 
-  var headerTexts = grid[0].map(function (tc) { return collectText_(tc); });
-
-  var perfCols = mapColumns_(headerTexts, PERF_COLUMN_MAP);
-  var hrCols = mapColumns_(headerTexts, HR_COLUMN_MAP);
-
-  // 머리글의 절반 이상이 매핑되면 반복형 표로 본다
-  var need = Math.max(2, Math.ceil(headerTexts.filter(function (t) { return t; }).length / 2));
-
-  if (countMapped_(perfCols) >= need && data.perf.length) {
-    fillRepeatTable_(grid, perfCols, data.perf, report, 'perf');
-    return;
-  }
-  if (countMapped_(hrCols) >= need && data.hr.length) {
-    fillRepeatTable_(grid, hrCols, data.hr, report, 'hr');
+  var found = findHeaderRow_(grid);
+  if (found) {
+    if (report.foundTables.indexOf(found.kind) === -1) report.foundTables.push(found.kind);
+    fillRepeatTable_(grid, found.row, found.cols, data[found.kind], report, found.kind);
     return;
   }
   fillLabelTable_(grid, data.company, report);
+}
+
+/**
+ * 머리글 행을 찾는다.
+ *
+ * 첫 행이 항상 머리글은 아니다. 관공서 서식은 '유사용역 수행실적' 같은
+ * 제목 행이 먼저 오고 그 아래에 실제 머리글이 오는 경우가 흔하다.
+ * 그래서 앞쪽 몇 행을 훑어 가장 잘 매핑되는 행을 머리글로 삼는다.
+ *
+ * 반환: { row, kind, cols } 또는 null
+ */
+function findHeaderRow_(grid) {
+  var best = null;
+  var limit = Math.min(3, grid.length - 1);   // 머리글 아래에 채울 행이 있어야 한다
+
+  for (var r = 0; r < limit; r++) {
+    var texts = grid[r].map(function (tc) { return collectText_(tc); });
+    var labeled = texts.filter(function (t) { return t; }).length;
+    if (labeled < 2) continue;
+
+    var need = Math.max(2, Math.ceil(labeled / 2));
+
+    [['perf', PERF_COLUMN_MAP], ['hr', HR_COLUMN_MAP]].forEach(function (pair) {
+      var cols = mapColumns_(texts, pair[1]);
+      var n = countMapped_(cols);
+      if (n < need) return;
+      if (!best || n > best.score) {
+        best = { row: r, kind: pair[0], cols: cols, score: n };
+      }
+    });
+  }
+  return best;
 }
 
 function mapColumns_(headerTexts, map) {
@@ -563,10 +586,15 @@ function countMapped_(cols) {
 }
 
 /** 머리글 아래 빈 행에 목록을 한 줄씩 채운다 */
-function fillRepeatTable_(grid, cols, rows, report, kind) {
+function fillRepeatTable_(grid, headerRow, cols, rows, report, kind) {
   var used = 0;
+  if (!rows || !rows.length) {
+    // 채울 표는 찾았는데 넣을 데이터가 없다 — 화면에서 알려줘야 한다
+    report.emptyTables.push(kind);
+    return;
+  }
 
-  for (var r = 1; r < grid.length && used < rows.length; r++) {
+  for (var r = headerRow + 1; r < grid.length && used < rows.length; r++) {
     var cells = grid[r];
     // 이미 값이 들어 있는 행은 건드리지 않는다 (예시 행이거나 기입된 행)
     var empty = cells.every(function (tc) { return isEmptyCell_(collectText_(tc)); });
