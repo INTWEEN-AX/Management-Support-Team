@@ -1231,11 +1231,13 @@
         '건, 채울 수 있는 표 ' + (res.tables || []).length + '개를 찾았습니다.</span>';
     }
 
-    if ((res.skipped || []).length) {
-      toast('시간이 모자라 ' + res.skipped.length + '개 파일을 건너뛰었습니다. 목록 새로고침을 눌러주세요.');
-    }
     renderQualifications(res.quals || []);
     renderFormIndex(res);
+
+    // 아직 분석하지 않은 업로드가 있으면 한 파일씩 처리한다.
+    // 한꺼번에 하면 실행시간 제한에 걸리고, 어디까지 됐는지도 안 보인다.
+    const pending = res.pending || [];
+    if (pending.length) analyzeNext(pending, 0);
 
 
   }
@@ -1252,6 +1254,37 @@
         (q.from ? '<span class="qual-from">' + escapeHtml(q.from) + '</span>' : '') +
       '</div>';
     }).join('');
+  }
+
+  function analyzeNext(pending, i) {
+    if (i >= pending.length) return;
+    const gen = proposeGen;
+    const item = pending[i];
+
+    const status = document.getElementById('rfp-status');
+    status.className = 'checklist warn';
+    status.style.display = '';
+    status.innerHTML = '<span class="check-icon warn">…</span>' +
+      '<span><b>' + escapeHtml(item.name) + '</b> 분석 중… (' +
+      (i + 1) + '/' + pending.length + ')<br>' +
+      '처음 한 번만 걸립니다. 다음부터는 저장된 결과를 바로 씁니다.</span>';
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (gen !== proposeGen) return;
+        proposePack = res;
+        proposeForms = res.tables || [];
+        renderPack(res);        // 남은 파일은 renderPack 이 이어서 처리한다
+      })
+      .withFailureHandler(function (err) {
+        if (gen !== proposeGen) return;
+        status.className = 'checklist warn';
+        status.innerHTML = '<span class="check-icon warn">!</span>' +
+          '<span><b>' + escapeHtml(item.name) + '</b> 분석에 실패했습니다.<br>' +
+          escapeHtml(String(err.message || err).split(String.fromCharCode(10))[0]) + '</span>';
+        analyzeNext(pending, i + 1);
+      })
+      .analyzeUpload(proposeBid.no, proposeBid.ord, item.fileId);
   }
 
   const KIND_BADGE = { perf: '실적', hr: '인력', company: '회사정보',

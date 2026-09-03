@@ -238,6 +238,7 @@ function getProposalPack(bidNo, bidOrd) {
       uploads.push({
         name: name,
         ext: 'hwpx',
+        analysisKey: analysisKey_(f),
         url: f.getUrl(),
         fileId: f.getId(),
         kindLabel: classifyFormName_(name).label
@@ -245,47 +246,38 @@ function getProposalPack(bidNo, bidOrd) {
     }
   }
 
-  // 올린 문서 중 서식 목차가 가장 많이 나온 것을 제안요청서로 본다
-  var rfp = null, forms = [], tables = [], quals = [];
+  // 올린 문서 중 서식 목차가 가장 많이 나온 것을 제안요청서로 본다.
+  // 여기서는 분석하지 않는다 — 저장해둔 결과만 읽는다.
+  // 압축 해제와 파싱은 무거워서 화면 열 때마다 하면 몇 분씩 걸린다.
+  var store = folder ? readAnalysisStore_(folder) : {};
+  var rfp = null, forms = [], tables = [], quals = [], pending = [];
   var qualSeen = {};
-  var packStarted = Date.now();
-  var skipped = [];
 
   uploads.forEach(function (u) {
-    // 남은 시간이 없으면 나머지는 건너뛴다. 통째로 실패하는 것보다 낫다.
-    if (Date.now() - packStarted > PACK_BUDGET_MS) {
-      u.skipped = true;
-      skipped.push(u.name);
-      return;
-    }
-    try {
-      var an = analyzeHwpxCached_(DriveApp.getFileById(u.fileId));
-      u.formCount = an.forms.length;
-      u.tableCount = an.tables.length;
-      u.qualCount = (an.quals || []).length;
+    var an = store[u.analysisKey];
+    if (!an) { u.pending = true; pending.push({ fileId: u.fileId, name: u.name }); return; }
 
-      // 참가자격은 입찰공고문에 있는 경우가 많아 올린 문서 전체에서 모은다
-      (an.quals || []).forEach(function (q) {
-        var k = q.text.replace(/\s+/g, '');
-        if (qualSeen[k]) return;
-        qualSeen[k] = true;
-        q.from = u.name;
-        quals.push(q);
-      });
+    u.formCount = (an.forms || []).length;
+    u.tableCount = (an.tables || []).length;
+    u.qualCount = (an.quals || []).length;
 
-      if (!rfp || an.forms.length > forms.length) {
-        rfp = u;
-        forms = an.forms;
-      }
-      an.tables.forEach(function (t) {
-        t.fileId = u.fileId;
-        t.fileName = u.name;
-        tables.push(t);
-      });
-    } catch (e) {
-      u.error = String(e.message || e).split('\n')[0];
-      Logger.log('업로드 문서 분석 실패: ' + u.name + ' — ' + e);
+    (an.quals || []).forEach(function (q) {
+      var k = q.text.replace(/\s+/g, '');
+      if (qualSeen[k]) return;
+      qualSeen[k] = true;
+      q.from = u.name;
+      quals.push(q);
+    });
+
+    if (!rfp || (an.forms || []).length > forms.length) {
+      rfp = u;
+      forms = an.forms || [];
     }
+    (an.tables || []).forEach(function (t) {
+      t.fileId = u.fileId;
+      t.fileName = u.name;
+      tables.push(t);
+    });
   });
 
   // 채워야 하는 서식 중 실제로 표가 잡힌 것
@@ -304,7 +296,7 @@ function getProposalPack(bidNo, bidOrd) {
     forms: forms,
     tables: tables,
     quals: quals.sort(function (a, b) { return (b.numeric ? 1 : 0) - (a.numeric ? 1 : 0); }),
-    skipped: skipped,
+    pending: pending,
     summary: {
       total: forms.length,
       fillable: forms.filter(function (f) { return f.fillable; }).length,
@@ -324,15 +316,7 @@ function findBidFolder_(bid) {
  * hwpx 를 한 번만 풀어서 본문 텍스트와 표를 함께 얻는다.
  * 전에는 텍스트용·표용으로 각각 압축을 풀어 같은 일을 두 번 했다.
  */
-function analyzeHwpxCached_(file) {
-  var key = 'an_' + file.getId() + '_' + file.getLastUpdated().getTime();
-  var cache = CacheService.getScriptCache();
-
-  var hit = cache.get(key);
-  if (hit) {
-    try { return JSON.parse(hit); } catch (e) { /* 깨졌으면 다시 */ }
-  }
-
+function analyzeHwpx_(file) {
   var out = { forms: [], tables: [], quals: [], truncated: false };
   var started = Date.now();
 
@@ -365,12 +349,10 @@ function analyzeHwpxCached_(file) {
     Logger.log('hwpx 분석 실패: ' + file.getName() + ' — ' + e);
   }
 
-  try { cache.put(key, JSON.stringify(out), 6 * 60 * 60); } catch (e) { /* 무시 */ }
   return out;
 }
 
-var HWPX_SCAN_BUDGET_MS = 45 * 1000;   // 파일 하나의 표 검사에 쓸 최대 시간
-var PACK_BUDGET_MS = 180 * 1000;       // 여러 파일을 합쳐 쓸 최대 시간
+var HWPX_SCAN_BUDGET_MS = 120 * 1000;  // 파일 하나의 표 검사에 쓸 최대 시간 (업로드 직후 한 번만 돈다)
 var HWPX_MAX_TABLES = 60;              // 이보다 많으면 앞쪽만 본다
 
 /** XML 이스케이프 되돌리기 (정규식으로 뽑은 텍스트용) */
@@ -449,6 +431,66 @@ function readTableSummary_(tbl) {
   };
 }
 
+
+var ANALYSIS_STORE_NAME = '_분석.json';
+
+/** 파일 하나의 분석 결과를 가리키는 키 (내용이 바뀌면 자동으로 달라진다) */
+function analysisKey_(file) {
+  return file.getId() + '|' + file.getLastUpdated().getTime();
+}
+
+/** 공고 폴더에 저장해둔 분석 결과 전체를 읽는다 */
+function readAnalysisStore_(folder) {
+  try {
+    var it = folder.getFilesByName(ANALYSIS_STORE_NAME);
+    if (!it.hasNext()) return {};
+    return JSON.parse(it.next().getBlob().getDataAsString('UTF-8')) || {};
+  } catch (e) {
+    Logger.log('분석 결과 읽기 실패(무시): ' + e);
+    return {};
+  }
+}
+
+/**
+ * 분석 결과를 저장한다.
+ * CacheService 는 6시간이면 날아가고 크기 제한도 있어서, 공고 폴더에 파일로 남긴다.
+ * 그래야 화면을 열 때마다 압축을 다시 풀지 않는다.
+ */
+function writeAnalysisStore_(folder, store) {
+  try {
+    var body = JSON.stringify(store);
+    var it = folder.getFilesByName(ANALYSIS_STORE_NAME);
+    if (it.hasNext()) it.next().setContent(body);
+    else folder.createFile(Utilities.newBlob(body, 'application/json', ANALYSIS_STORE_NAME));
+  } catch (e) {
+    Logger.log('분석 결과 저장 실패(무시): ' + e);
+  }
+}
+
+/**
+ * 올린 문서 하나를 분석해서 결과를 저장한다. 화면이 파일마다 한 번씩 부른다.
+ * 한 번에 하나만 처리하므로 실행시간 제한에 걸리지 않고, 진행 상황도 보여줄 수 있다.
+ */
+function analyzeUpload(bidNo, bidOrd, fileId) {
+  var bid = findBidRecord_(bidNo, bidOrd);
+  var folder = findBidFolder_(bid);
+  if (!folder) throw new Error('공고 폴더를 찾지 못했습니다.');
+
+  var file = DriveApp.getFileById(fileId);
+  var store = readAnalysisStore_(folder);
+  var key = analysisKey_(file);
+
+  if (!store[key]) {
+    store[key] = analyzeHwpx_(file);
+    // 같은 파일의 옛 분석 결과는 버린다
+    Object.keys(store).forEach(function (k) {
+      if (k !== key && k.indexOf(fileId + '|') === 0) delete store[k];
+    });
+    writeAnalysisStore_(folder, store);
+  }
+  return getProposalPack(bidNo, bidOrd);
+}
+
 /**
  * 웹앱에서 사람이 직접 올린 서식을 공고 폴더에 저장한다.
  * @param {Object} payload { bidNo, bidOrd, name, mimeType, dataBase64 }
@@ -476,6 +518,17 @@ function uploadFormFile(payload) {
   while (dup.hasNext()) dup.next().setTrashed(true);
 
   var file = folder.createFile(blob);
+
+  // 올린 즉시 분석해서 결과를 저장해둔다.
+  // 이걸 안 해두면 화면을 열 때마다 압축을 다시 풀게 된다.
+  try {
+    var store = readAnalysisStore_(folder);
+    store[analysisKey_(file)] = analyzeHwpx_(file);
+    writeAnalysisStore_(folder, store);
+  } catch (e) {
+    Logger.log('업로드 직후 분석 실패(무시, 화면에서 다시 시도): ' + e);
+  }
+
   return JSON.parse(JSON.stringify({
     name: file.getName(),
     url: file.getUrl(),
