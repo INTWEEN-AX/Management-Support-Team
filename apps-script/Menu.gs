@@ -52,6 +52,10 @@ function onOpen() {
     .addItem('트리거 등록/재등록', 'setupBidTrigger')
     .addToUi();
 
+  ui.createMenu('제안서')
+    .addItem('OpenAI 연결 확인', 'checkOpenAI')
+    .addToUi();
+
   ui.createMenu('생일메일')
     .addItem('오늘 발송 대상 미리보기 (실제 발송 안 함)', 'showBirthdayPreview')
     .addSeparator()
