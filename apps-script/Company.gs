@@ -38,11 +38,11 @@ var COMPANY_FIELDS = [
   { key: 'foundedYear', label: '설립연도',      group: '기본', auto: true },
 
   // ── 연락처 ──
-  { key: 'zipCode',     label: '우편번호',      group: '연락처' },
+  { key: 'zipCode',     label: '우편번호',      group: '연락처', seed: '07217' },
   { key: 'address',     label: '주소',          group: '연락처',
     seed: '서울특별시 영등포구 당산로41길 11, 이동 1002호(당산동4가, 당산 SK V1 center)' },
-  { key: 'tel',         label: '전화번호',      group: '연락처' },
-  { key: 'fax',         label: '팩스',          group: '연락처' },
+  { key: 'tel',         label: '전화번호',      group: '연락처', seed: '02-6949-5988' },
+  { key: 'fax',         label: '팩스',          group: '연락처', seed: '02-6280-5955' },
   { key: 'email',       label: '이메일',        group: '연락처' },
   { key: 'homepage',    label: '홈페이지',      group: '연락처' },
 
@@ -55,9 +55,12 @@ var COMPANY_FIELDS = [
           '국제회의 기획업, 디자인 제작, 광고영화 및 비디오물 제작업, 교육컨설팅' },
   { key: 'mainBiz',    label: '주요사업',        group: '사업',
     note: '서식에 한 줄로 적을 대표 문구' },
-  { key: 'g2bRegNo',   label: '조달청 등록번호', group: '사업',
-    note: '경쟁입찰참가자격 등록증에 적힌 번호' },
-  { key: 'g2bLicense', label: '조달청 등록 업종', group: '사업', note: '예) 용역-행사대행' },
+  { key: 'g2bRegNo',   label: '조달청 등록번호', group: '사업', seed: '486-87-00976',
+    note: '경쟁입찰참가자격 등록은 사업자등록번호로 관리됨 (등록 2018-04-20, 갱신 2026-03-19)' },
+  { key: 'g2bLicense', label: '조달청 등록 업종', group: '사업',
+    seed: '학술·연구용역(1169), 소프트웨어사업자(1469), 비디오물제작업(3244), ' +
+          '국제회의기획업(5720), 기타이러닝업(6530), 행사대행업(9901), 광고대행업(9902)',
+    note: '등록물품: 기타행사기획및대행서비스(8014199001)' },
 
   // ── 규모 ──
   { key: 'companyScale', label: '기업규모', group: '규모', seed: '중소기업(중기업)',
@@ -80,12 +83,13 @@ var COMPANY_FIELDS = [
     note: '유효기간 2027-06-25' },
   { key: 'creditAgency', label: '신용평가기관', group: '신인도', seed: '(주)나이스디앤비' },
   { key: 'sanctionYn',   label: '부정당업자 제재 여부', group: '신인도', seed: '없음',
-    note: '제재가 생기면 있음 으로 바꾸고 아래 3칸을 채우세요' },
+    note: "경쟁입찰참가자격등록증상 '정상업체' (2026-03-23 기준). " +
+          '제재가 생기면 있음 으로 바꾸고 아래 3칸을 채우세요' },
   { key: 'sanctionOrg',    label: '제재기관', group: '신인도' },
   { key: 'sanctionPeriod', label: '제재기간', group: '신인도' },
   { key: 'sanctionReason', label: '제재사유', group: '신인도' },
-  { key: 'accidentRate',   label: '산업재해율', group: '신인도',
-    note: '산업재해율 확인서에 적힌 값' },
+  { key: 'accidentRate',   label: '산업재해율', group: '신인도', seed: '0.00%',
+    note: '2023~2025 3년 평균 (동종동규모 평균 0.29%). 사고사망만인율 0.00' },
   { key: 'certifications', label: '보유 인증', group: '신인도',
     note: 'ISO, 벤처기업, 이노비즈 등 쉼표로' },
   { key: 'patents',        label: '특허 보유',  group: '신인도',
