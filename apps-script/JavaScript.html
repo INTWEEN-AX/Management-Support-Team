@@ -2158,32 +2158,87 @@
       escapeHtml(text) + '</span>';
   }
 
+  /**
+   * 폰 사진은 3~8MB 라 그대로 올리면 전송에서만 한참 걸린다.
+   * 영수증 글자를 읽는 데는 긴 변 1400px 이면 충분하다.
+   * 서버로 가는 양이 20배 가까이 줄고, 비전 모델 토큰도 같이 줄어든다.
+   */
+  const RECEIPT_MAX_PX = 1400;
+
+  function shrinkImage(file, done, fail) {
+    const finish = function (bmpOrImg, w0, h0) {
+      try {
+        const scale = Math.min(1, RECEIPT_MAX_PX / Math.max(w0, h0));
+        const w = Math.max(1, Math.round(w0 * scale));
+        const h = Math.max(1, Math.round(h0 * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(bmpOrImg, 0, 0, w, h);
+        const url = canvas.toDataURL('image/jpeg', 0.8);
+        done({ dataUrl: url, base64: url.split(',')[1], w: w, h: h });
+      } catch (err) { fail(err); }
+    };
+
+    // createImageBitmap 은 폰 사진의 회전 정보(EXIF)까지 반영해준다
+    if (window.createImageBitmap) {
+      createImageBitmap(file, { imageOrientation: 'from-image' })
+        .then(function (bmp) { finish(bmp, bmp.width, bmp.height); })
+        .catch(function () { viaImage(); });
+    } else {
+      viaImage();
+    }
+
+    function viaImage() {
+      const reader = new FileReader();
+      reader.onload = function () {
+        const img = new Image();
+        img.onload = function () { finish(img, img.naturalWidth, img.naturalHeight); };
+        img.onerror = function () { fail(new Error('사진을 열지 못했습니다.')); };
+        img.src = String(reader.result);
+      };
+      reader.onerror = function () { fail(new Error('사진을 읽지 못했습니다.')); };
+      reader.readAsDataURL(file);
+    }
+  }
+
   function onReceiptPicked(e) {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = function () {
-      const b64 = String(reader.result).split(',')[1];
-      receiptImage = { dataBase64: b64, mimeType: file.type || 'image/jpeg', name: file.name };
+    rcStatus('warn', '사진을 줄이는 중…');
+    document.getElementById('receipt-form-card').style.display = 'none';
+
+    shrinkImage(file, function (out) {
+      receiptImage = { dataBase64: out.base64, mimeType: 'image/jpeg', name: file.name };
 
       const img = document.getElementById('receipt-preview');
-      img.src = reader.result;
+      img.src = out.dataUrl;
       img.style.display = '';
 
-      rcStatus('warn', '영수증을 읽는 중… 10초쯤 걸립니다.');
-      document.getElementById('receipt-form-card').style.display = 'none';
+      const beforeKb = Math.round(file.size / 1024);
+      const afterKb = Math.round(out.base64.length * 3 / 4 / 1024);
+      const t0 = Date.now();
+      rcStatus('warn', '영수증을 읽는 중… (' + beforeKb + 'KB → ' + afterKb + 'KB)');
 
       google.script.run
-        .withSuccessHandler(fillReceiptForm)
+        .withSuccessHandler(function (r) {
+          fillReceiptForm(r);
+          if (r.amount) {
+            rcStatus('ok', '읽었습니다 (' + ((Date.now() - t0) / 1000).toFixed(1) +
+              '초). 금액과 날짜를 확인해주세요.');
+          }
+        })
         .withFailureHandler(function (err) {
           rcStatus('bad', String(err.message || err).split(String.fromCharCode(10))[0]);
           // 못 읽어도 손으로 채울 수 있게 폼은 열어준다
           fillReceiptForm({ date: '', store: '', amount: 0, card: '', confidence: 'low' });
         })
         .readReceipt(receiptImage);
-    };
-    reader.readAsDataURL(file);
+
+    }, function (err) {
+      rcStatus('bad', String(err.message || err));
+    });
   }
 
   function fillReceiptForm(r) {
@@ -2202,7 +2257,6 @@
       conf.textContent = r.items ? escapeHtml(r.items) : '';
       conf.className = 'step-hint';
     }
-    if (r.amount) rcStatus('ok', '읽었습니다. 금액과 날짜를 확인해주세요.');
 
     document.getElementById('receipt-form-card').style.display = '';
     document.getElementById('rc-purpose').focus();
