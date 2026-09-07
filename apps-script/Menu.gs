@@ -60,6 +60,10 @@ function onOpen() {
     .addItem('실적 반영 PPT 생성', 'generatePerfPpt')
     .addToUi();
 
+  ui.createMenu('법인카드')
+    .addItem('지출 시트 만들기', 'setupExpenseSheet')
+    .addToUi();
+
   ui.createMenu('접근 권한')
     .addItem('누가 들어올 수 있나 점검', 'checkAccessList')
     .addToUi();

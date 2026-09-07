@@ -2309,6 +2309,96 @@
   }
 
   /* ============================================================
+     법인카드 영수증 — 폰에서 쓰는 화면이라 손가락 크기에 맞춘다
+     ============================================================ */
+  .shoot-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 92px;
+    border: 1.5px dashed var(--primary-3);
+    border-radius: var(--br-card);
+    background: var(--primary-5);
+    color: var(--primary-1);
+    font-size: var(--fs-h4);
+    font-weight: var(--fw-bold);
+    cursor: pointer;
+    transition: background .15s ease;
+  }
+  .shoot-btn:hover { background: var(--primary-6); }
+  .shoot-icon { font-size: 24px; }
+
+  #receipt-preview {
+    display: block;
+    max-width: 260px;
+    margin-top: 12px;
+    border-radius: var(--br-card-small);
+    border: 1px solid var(--border);
+  }
+
+  .form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+  }
+  .form-grid .wide { grid-column: 1 / -1; }
+  .form-grid label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: var(--fs-caption);
+    color: var(--grey-2);
+  }
+  .form-grid input,
+  .form-grid select,
+  .form-grid textarea {
+    height: 40px;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--br-card-small);
+    font: inherit;
+    font-size: var(--fs-p);
+    color: var(--primary-black);
+    background: var(--background);
+  }
+  .form-grid textarea {
+    height: auto;
+    padding: 10px 12px;
+    line-height: 1.6;
+    resize: vertical;
+  }
+  .form-grid input:focus,
+  .form-grid select:focus,
+  .form-grid textarea:focus {
+    outline: none;
+    border-color: var(--primary-2);
+  }
+  .form-grid .lab {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .form-grid .req {
+    color: var(--doc-expired);
+    font-weight: var(--fw-bold);
+  }
+  .form-grid .opt { color: var(--grey-3); }
+
+  .step-hint.warn { color: var(--amber-1); font-weight: var(--fw-bold); }
+
+  .ledger-row-main.exp-cols {
+    grid-template-columns: 1fr 130px 56px;
+    cursor: default;
+  }
+  .exp-link {
+    font-size: var(--fs-caption);
+    color: var(--primary-1);
+    text-align: right;
+  }
+
+  /* ============================================================
      반응형
      ============================================================ */
   @media (max-width: 1100px) {
@@ -2333,6 +2423,7 @@
     .ledger-row-main,
     .ledger-row-main.hr-cols,
     .ledger-row-main.bid-cols,
+    .ledger-row-main.exp-cols,
     .ledger-row-main.leave-cols,
     .ledger-row-main.doc-cols {
       display: flex;

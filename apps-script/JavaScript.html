@@ -37,6 +37,7 @@
     bid: '나라장터 공고 자동 수집 · 매일 오전 갱신 · 투찰은 나라장터에서 직접',
     documents: '입찰 행정서류 유효기간 관리 · D-day는 조회 시점 기준으로 재계산',
     leave: '보상휴가 잔여 및 소멸 임박 · 정본은 다우오피스, 여기는 조회용',
+    expense: '법인카드 영수증 촬영 · 읽은 값은 확인 후 저장',
     propose: '공고문 분석 및 제안자료 준비 · 실적/인력 선택 후 표로 복사',
     proposal: '기술 제안서(PPT) 초안 작성 · 준비중',
   };
@@ -78,6 +79,7 @@
     initPortalSearch();
     initProposeModal();
     initLeave();
+    initExpense();
   }
 
   /**
@@ -123,6 +125,7 @@
     document.body.classList.toggle('subpage', !isHome);
     document.getElementById('subhead').style.display = isHome ? 'none' : '';
     if (tab === 'leave' && !LEAVE_META) loadLeave();
+    if (tab === 'expense') loadRecentExpenses();
     document.getElementById('page-subtitle').textContent = isHome ? '' : (TAB_SUBTITLES[tab] || '');
     window.scrollTo(0, 0);
 
@@ -2129,6 +2132,174 @@
       syncLeaveSeg();
       applyLeaveFilters();
     });
+  }
+
+
+  // ── 법인카드 영수증 ──
+  //
+  // 카드 내역은 어차피 카드사에서 온다. 사람만 아는 건 '이 결제가 뭐였는지' 라
+  // 그걸 결제 직후에 받는 데 초점을 맞춘다.
+  // 읽은 값은 절대 자동 저장하지 않는다 — 금액을 잘못 읽으면 회계 사고다.
+
+  let receiptImage = null;   // { dataBase64, mimeType, name }
+
+  function initExpense() {
+    document.getElementById('receipt-file').addEventListener('change', onReceiptPicked);
+    document.getElementById('rc-cancel').addEventListener('click', resetReceipt);
+    document.getElementById('rc-save').addEventListener('click', saveReceipt);
+  }
+
+  function rcStatus(kind, text) {
+    const el = document.getElementById('receipt-status');
+    el.style.display = '';
+    el.className = 'checklist ' + kind;
+    el.innerHTML = '<span class="check-icon ' + kind + '">' +
+      (kind === 'warn' ? '…' : kind === 'bad' ? '!' : '✓') + '</span><span>' +
+      escapeHtml(text) + '</span>';
+  }
+
+  function onReceiptPicked(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function () {
+      const b64 = String(reader.result).split(',')[1];
+      receiptImage = { dataBase64: b64, mimeType: file.type || 'image/jpeg', name: file.name };
+
+      const img = document.getElementById('receipt-preview');
+      img.src = reader.result;
+      img.style.display = '';
+
+      rcStatus('warn', '영수증을 읽는 중… 10초쯤 걸립니다.');
+      document.getElementById('receipt-form-card').style.display = 'none';
+
+      google.script.run
+        .withSuccessHandler(fillReceiptForm)
+        .withFailureHandler(function (err) {
+          rcStatus('bad', String(err.message || err).split(String.fromCharCode(10))[0]);
+          // 못 읽어도 손으로 채울 수 있게 폼은 열어준다
+          fillReceiptForm({ date: '', store: '', amount: 0, card: '', confidence: 'low' });
+        })
+        .readReceipt(receiptImage);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function fillReceiptForm(r) {
+    document.getElementById('rc-date').value = r.date || todayISO();
+    document.getElementById('rc-store').value = r.store || '';
+    document.getElementById('rc-amount').value = r.amount || '';
+    document.getElementById('rc-card').value = r.card || '';
+    document.getElementById('rc-purpose').value = '';
+    document.getElementById('rc-project').value = '';
+
+    const conf = document.getElementById('receipt-conf');
+    if (r.confidence === 'low') {
+      conf.textContent = '흐릿하게 읽혔습니다 — 값을 꼭 확인해주세요';
+      conf.className = 'step-hint warn';
+    } else {
+      conf.textContent = r.items ? escapeHtml(r.items) : '';
+      conf.className = 'step-hint';
+    }
+    if (r.amount) rcStatus('ok', '읽었습니다. 금액과 날짜를 확인해주세요.');
+
+    document.getElementById('receipt-form-card').style.display = '';
+    document.getElementById('rc-purpose').focus();
+  }
+
+  function todayISO() {
+    const d = new Date();
+    return d.getFullYear() + '-' +
+      String(d.getMonth() + 1).padStart(2, '0') + '-' +
+      String(d.getDate()).padStart(2, '0');
+  }
+
+  function saveReceipt() {
+    const purpose = document.getElementById('rc-purpose').value.trim();
+    if (!purpose) {
+      toast('사유·참석자를 적어주세요. 나중에 이걸 되짚는 데 시간이 제일 많이 듭니다.');
+      document.getElementById('rc-purpose').focus();
+      return;
+    }
+    const amount = Number(document.getElementById('rc-amount').value);
+    if (!amount) { toast('금액을 확인해주세요.'); return; }
+
+    const btn = document.getElementById('rc-save');
+    btn.disabled = true;
+    btn.textContent = '저장 중…';
+
+    google.script.run
+      .withSuccessHandler(function () {
+        btn.disabled = false;
+        btn.textContent = '저장';
+        toast('등록했습니다.');
+        resetReceipt();
+        loadRecentExpenses();
+      })
+      .withFailureHandler(function (err) {
+        btn.disabled = false;
+        btn.textContent = '저장';
+        toast(String(err.message || err).split(String.fromCharCode(10))[0]);
+      })
+      .saveExpense({
+        date: document.getElementById('rc-date').value,
+        store: document.getElementById('rc-store').value,
+        amount: amount,
+        card: document.getElementById('rc-card').value,
+        project: document.getElementById('rc-project').value,
+        purpose: purpose,
+        account: document.getElementById('rc-account').value,
+        dataBase64: receiptImage ? receiptImage.dataBase64 : '',
+        mimeType: receiptImage ? receiptImage.mimeType : ''
+      });
+  }
+
+  function resetReceipt() {
+    receiptImage = null;
+    document.getElementById('receipt-file').value = '';
+    document.getElementById('receipt-preview').style.display = 'none';
+    document.getElementById('receipt-status').style.display = 'none';
+    document.getElementById('receipt-form-card').style.display = 'none';
+  }
+
+  function loadRecentExpenses() {
+    google.script.run
+      .withSuccessHandler(function (info) {
+        const el = document.getElementById('expense-sheet-link');
+        el.innerHTML = info.ok
+          ? '<a href="' + info.url + '" target="_blank" rel="noopener">시트에서 보기</a>'
+          : escapeHtml(info.reason);
+      })
+      .getExpenseInfo();
+
+    google.script.run
+      .withSuccessHandler(renderExpenseList)
+      .withFailureHandler(function (err) {
+        document.getElementById('expense-list').innerHTML =
+          '<div class="empty-state">' + escapeHtml(String(err.message || err)) + '</div>';
+      })
+      .getRecentExpenses(15);
+  }
+
+  function renderExpenseList(rows) {
+    const wrap = document.getElementById('expense-list');
+    if (!rows || !rows.length) {
+      wrap.innerHTML = '<div class="empty-state">아직 등록된 내역이 없습니다.</div>';
+      return;
+    }
+    wrap.innerHTML = rows.map(function (r) {
+      return '<div class="ledger-row"><div class="ledger-row-main exp-cols">' +
+        '<div class="ledger-main-text">' +
+          '<div class="task-name">' + escapeHtml(r.store || '(상호 미기재)') + '</div>' +
+          '<div class="org-name">' + escapeHtml(r.purpose || '') +
+            (r.project ? ' · ' + escapeHtml(r.project) : '') + '</div>' +
+        '</div>' +
+        '<div class="doc-expiry"><b>' + r.amount.toLocaleString() + '원</b>' +
+          '<span>' + escapeHtml(r.date) + '</span></div>' +
+        (r.link ? '<a class="exp-link" href="' + r.link + '" target="_blank" rel="noopener">영수증</a>' : '<span></span>') +
+      '</div></div>';
+    }).join('');
   }
 
   // ── 표 복사 ──
