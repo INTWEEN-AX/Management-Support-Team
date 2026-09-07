@@ -60,6 +60,10 @@ function onOpen() {
     .addItem('실적 반영 PPT 생성', 'generatePerfPpt')
     .addToUi();
 
+  ui.createMenu('접근 권한')
+    .addItem('누가 들어올 수 있나 점검', 'checkAccessList')
+    .addToUi();
+
   ui.createMenu('보상휴가')
     .addItem('원장 시트 만들기', 'setupLeaveSheet')
     .addItem('원장 점검', 'debugLeaveData')

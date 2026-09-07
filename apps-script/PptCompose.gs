@@ -380,6 +380,7 @@ function planToDeck_(plan, menu) {
  * @param {string} rfpText  업로드한 제안요청서 본문 (없으면 공고 정보만으로 짠다)
  */
 function composeProposalPpt(bidNo, bidOrd, rfpText) {
+  assertAccess_('제안서 초안 생성');
   var bid = findBidRecord_(bidNo, bidOrd);
   var report = [];
 

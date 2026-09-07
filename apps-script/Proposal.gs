@@ -102,6 +102,7 @@ function todayOpenAICalls_() {
  */
 function callOpenAI_(messages, opts) {
   opts = opts || {};
+  assertAccess_('OpenAI 호출');   // 누르는 만큼 비용이 나간다
   countOpenAICall_();
 
   var model = opts.model || getOpenAIModel_();

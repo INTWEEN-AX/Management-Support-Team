@@ -25,6 +25,23 @@ var HR_STATUS_TABS = ['재직(상근)', '재직(비상근)', '휴직'];
 // ─────────────────────────────────────────────────────────────
 
 function doGet() {
+  // 명단에 없는 사람은 strict 모드일 때만 막는다.
+  // open 모드에서는 기록만 남기고 그대로 보여준다 —
+  // 명단이 검증되기 전에 잠그면 전원이 못 들어온다.
+  var a = checkCurrentAccess_();
+  if (!a.allowed && a.mode === 'strict') {
+    return HtmlService.createHtmlOutput(
+      '<div style="font-family:system-ui;padding:48px;max-width:520px;margin:0 auto;' +
+      'color:#1a1a1a;line-height:1.7">' +
+      '<h2 style="margin:0 0 12px">접근 권한이 없습니다</h2>' +
+      '<p style="color:#666">' + (a.email || '계정을 확인하지 못했습니다') +
+      '<br>' + a.reason + '</p>' +
+      '<p style="color:#666">사내 구성원이시라면 관리자에게 ' +
+      '인력현황 시트에 이메일 등록을 요청해주세요.</p></div>')
+      .setTitle('접근 권한 없음');
+  }
+  Logger.log('접속: ' + (a.email || '(미확인)') + ' / ' + a.reason + ' / ' + a.mode);
+
   return HtmlService.createTemplateFromFile('Index')
     .evaluate()
     .setTitle('인트윈 대시보드')
