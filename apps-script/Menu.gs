@@ -60,6 +60,11 @@ function onOpen() {
     .addItem('실적 반영 PPT 생성', 'generatePerfPpt')
     .addToUi();
 
+  ui.createMenu('보상휴가')
+    .addItem('원장 시트 만들기', 'setupLeaveSheet')
+    .addItem('원장 점검', 'debugLeaveData')
+    .addToUi();
+
   ui.createMenu('생일메일')
     .addItem('오늘 발송 대상 미리보기 (실제 발송 안 함)', 'showBirthdayPreview')
     .addSeparator()
