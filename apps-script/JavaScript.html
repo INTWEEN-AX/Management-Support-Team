@@ -36,6 +36,7 @@
     hr: '조직 구성 및 인사정보 조회 · 개인정보는 상세보기에서만 노출',
     bid: '나라장터 공고 자동 수집 · 매일 오전 갱신 · 투찰은 나라장터에서 직접',
     documents: '입찰 행정서류 유효기간 관리 · D-day는 조회 시점 기준으로 재계산',
+    leave: '보상휴가 잔여 및 소멸 임박 · 정본은 다우오피스, 여기는 조회용',
     propose: '공고문 분석 및 제안자료 준비 · 실적/인력 선택 후 표로 복사',
     proposal: '기술 제안서(PPT) 초안 작성 · 준비중',
   };
@@ -76,6 +77,7 @@
     initHistory();
     initPortalSearch();
     initProposeModal();
+    initLeave();
   }
 
   /**
@@ -120,6 +122,7 @@
     var isHome = (tab === 'home');
     document.body.classList.toggle('subpage', !isHome);
     document.getElementById('subhead').style.display = isHome ? 'none' : '';
+    if (tab === 'leave' && !LEAVE_META) loadLeave();
     document.getElementById('page-subtitle').textContent = isHome ? '' : (TAB_SUBTITLES[tab] || '');
     window.scrollTo(0, 0);
 
@@ -1940,6 +1943,192 @@
       switchTab('propose');
     });
     document.getElementById('proposal-generate').addEventListener('click', generateProposal);
+  }
+
+
+  // ── 휴가현황 (보상휴가) ──
+  //
+  // 정본은 다우오피스다. 여기서 차감하지 않고 원장에 적힌 것을 다시 셀 뿐이다.
+  // 잔여를 두 곳에서 따로 계산하면 반드시 어긋나고, 근태는 노동법상 기록이라
+  // 어긋나면 분쟁이 된다.
+
+  let ALL_LEAVE = [];
+  let LEAVE_META = null;
+  let leaveFilters = { q: '', status: '' };
+
+  function loadLeave() {
+    const wrap = document.getElementById('leave-list');
+    wrap.innerHTML = '<div class="empty-state">데이터를 불러오는 중…</div>';
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res.ok) {
+          wrap.innerHTML = '<div class="empty-state">' + escapeHtml(res.reason) + '</div>';
+          document.getElementById('leave-summary').innerHTML = '';
+          return;
+        }
+        ALL_LEAVE = res.people || [];
+        LEAVE_META = res;
+        renderLeaveSummary();
+        renderLeaveNote();
+        applyLeaveFilters();
+      })
+      .withFailureHandler(function (err) {
+        wrap.innerHTML = '<div class="empty-state">불러오지 못했습니다.<br>' +
+          escapeHtml(String(err.message || err)) + '</div>';
+      })
+      .getLeaveData();
+  }
+
+  function leaveStatus(p) {
+    if (p.overHours > 0) return 'issue';       // 발생보다 많이 썼다 — 원장이 틀렸다는 신호
+    if (p.soonHours > 0) return 'soon';
+    if (p.leftHours > 0) return 'left';
+    return 'none';
+  }
+
+  const LEAVE_LABEL = { issue: '확인 필요', soon: '소멸 임박', left: '잔여', none: '없음' };
+  const LEAVE_TONE  = { issue: 'expired', soon: 'imminent', left: 'normal', none: 'none' };
+
+  function renderLeaveSummary() {
+    const wrap = document.getElementById('leave-summary');
+    const t = LEAVE_META.totals;
+
+    if (!t.people) {
+      wrap.className = 'doc-summary ok';
+      wrap.innerHTML = '<span class="doc-summary-icon">·</span>' +
+        '<span class="doc-summary-text">원장에 기록이 없습니다</span>';
+      return;
+    }
+    if (!t.soonPeople && !t.overPeople) {
+      wrap.className = 'doc-summary ok';
+      wrap.innerHTML = '<span class="doc-summary-icon">✓</span>' +
+        '<span class="doc-summary-text">소멸 임박 없음 · 전사 잔여 ' + t.leftHours + '시간</span>';
+      return;
+    }
+
+    wrap.className = 'doc-summary alert';
+    let chips = '';
+    if (t.overPeople) {
+      chips += '<button type="button" class="doc-chip expired" data-status="issue">' +
+               '확인 필요 <b>' + t.overPeople + '</b>명</button>';
+    }
+    if (t.soonPeople) {
+      chips += '<button type="button" class="doc-chip imminent" data-status="soon">' +
+               '30일 내 소멸 <b>' + t.soonPeople + '</b>명</button>';
+    }
+    wrap.innerHTML = '<span class="doc-summary-icon">!</span>' +
+      '<span class="doc-summary-text">전사 잔여 ' + t.leftHours + '시간</span>' + chips;
+
+    wrap.querySelectorAll('.doc-chip').forEach(function (b) {
+      b.addEventListener('click', function () {
+        leaveFilters.status = b.dataset.status;
+        syncLeaveSeg();
+        applyLeaveFilters();
+      });
+    });
+  }
+
+  function renderLeaveNote() {
+    const c = LEAVE_META.config;
+    document.getElementById('leave-note').innerHTML =
+      '기준일 <b>' + escapeHtml(LEAVE_META.asOf) + '</b> · 발생 ' + c.multiplier +
+      '배 · 유효 ' + c.validMonths + '개월 · 1일 ' + c.hoursPerDay + '시간' +
+      (c.fromDefaults ? ' <b>(기본값 — 회사 규정과 대조 필요)</b>' : '') +
+      '<br>정본은 <b>다우오피스</b>입니다. 이 화면은 조회용이며 여기서 차감되지 않습니다. ' +
+      '기록은 HR 스프레드시트의 <b>보상휴가</b> 탭에서 관리합니다.';
+  }
+
+  function applyLeaveFilters() {
+    const q = leaveFilters.q.trim().toLowerCase();
+    const rows = ALL_LEAVE.filter(function (p) {
+      if (leaveFilters.status && leaveStatus(p) !== leaveFilters.status) return false;
+      if (!q) return true;
+      return (p.name + ' ' + (p.dept || '')).toLowerCase().indexOf(q) > -1;
+    });
+    document.getElementById('leave-result-count').textContent =
+      rows.length + '명 / 전체 ' + ALL_LEAVE.length + '명';
+    renderLeaveList(rows);
+  }
+
+  function renderLeaveList(rows) {
+    const wrap = document.getElementById('leave-list');
+    wrap.innerHTML = '';
+    if (!rows.length) {
+      wrap.innerHTML = ALL_LEAVE.length
+        ? '<div class="empty-state">조건에 맞는 사람이 없습니다.</div>'
+        : '<div class="empty-state">원장에 기록이 없습니다.<br>' +
+          'HR 스프레드시트의 <b>보상휴가</b> 탭에 입력해주세요.</div>';
+      return;
+    }
+
+    rows.forEach(function (p) {
+      const st = leaveStatus(p);
+      const row = document.createElement('div');
+      row.className = 'ledger-row';
+
+      row.innerHTML =
+        '<div class="ledger-row-main leave-cols">' +
+          '<div class="dday doc-' + LEAVE_TONE[st] + '">' +
+            (p.leftDays > 0 ? p.leftDays + '일' : '0') + '</div>' +
+          '<div class="ledger-main-text">' +
+            '<div class="task-name">' + escapeHtml(p.name) + '</div>' +
+            '<div class="org-name">' + escapeHtml(p.dept || '부서 미기재') + '</div>' +
+          '</div>' +
+          '<div class="doc-expiry">' +
+            (p.nextExpiry
+              ? '<b>' + escapeHtml(p.nextExpiry) + '</b><span>까지</span>'
+              : '<span>소멸 예정 없음</span>') +
+          '</div>' +
+          '<div class="doc-badge doc-' + LEAVE_TONE[st] + '">' + LEAVE_LABEL[st] + '</div>' +
+          '<div class="expand-caret">▶</div>' +
+        '</div>' +
+        '<div class="ledger-detail">' +
+          '<div class="detail-grid">' +
+            '<div><b>총 발생</b>' + p.grantedHours + '시간</div>' +
+            '<div><b>사용</b>' + p.usedHours + '시간</div>' +
+            '<div><b>잔여</b>' + p.leftHours + '시간 (' + p.leftDays + '일)</div>' +
+            '<div><b>30일 내 소멸</b>' + (p.soonHours ? p.soonHours + '시간' : '없음') + '</div>' +
+            '<div><b>이미 소멸</b>' + (p.expiredHours ? p.expiredHours + '시간' : '없음') + '</div>' +
+            '<div><b>원장 줄 수</b>' + p.rows + '줄</div>' +
+          '</div>' +
+          (p.overHours
+            ? '<div class="doc-note">발생보다 <b>' + p.overHours + '시간</b> 많이 사용된 것으로 계산됩니다. ' +
+              '원장에 빠진 발생 기록이 있는지 확인해주세요.</div>'
+            : '') +
+        '</div>';
+
+      row.querySelector('.ledger-row-main').addEventListener('click', function () {
+        row.classList.toggle('open');
+      });
+      wrap.appendChild(row);
+    });
+  }
+
+  function syncLeaveSeg() {
+    document.querySelectorAll('#leave-status-group .seg-btn').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.status === leaveFilters.status);
+    });
+  }
+
+  function initLeave() {
+    document.getElementById('leave-search-input').addEventListener('input', function (e) {
+      leaveFilters.q = e.target.value;
+      applyLeaveFilters();
+    });
+    document.querySelectorAll('#leave-status-group .seg-btn').forEach(function (b) {
+      b.addEventListener('click', function () {
+        leaveFilters.status = b.dataset.status;
+        syncLeaveSeg();
+        applyLeaveFilters();
+      });
+    });
+    document.getElementById('leave-reset-btn').addEventListener('click', function () {
+      leaveFilters = { q: '', status: '' };
+      document.getElementById('leave-search-input').value = '';
+      syncLeaveSeg();
+      applyLeaveFilters();
+    });
   }
 
   // ── 표 복사 ──
