@@ -82,11 +82,16 @@ function expenseFolder_() {
 // ── 영수증 읽기 ──
 
 var RECEIPT_PROMPT =
-  '영수증 사진이다. 아래 JSON 으로만 답하라. 설명을 덧붙이지 마라.\n' +
-  '{"date":"YYYY-MM-DD","store":"상호","amount":숫자,"card":"카드 끝 4자리",' +
+  '이 사진이 영수증(또는 카드 매출전표)인지 먼저 판단하고, 맞으면 값을 읽어라.\n' +
+  '아래 JSON 으로만 답하라. 설명을 덧붙이지 마라.\n' +
+  '{"isReceipt":true|false,"kind":"무엇이 찍혔는지 15자 이내",' +
+  '"date":"YYYY-MM-DD","store":"상호","amount":숫자,"card":"카드 끝 4자리",' +
   '"items":"주요 품목 요약 40자 이내","confidence":"high|low"}\n' +
   '규칙:\n' +
-  '- amount 는 총 결제금액(합계)이다. 부가세나 공급가액이 아니라 실제 결제한 금액.\n' +
+  '- 영수증이 아니면 isReceipt 를 false 로 하고 kind 에 무엇인지 적어라 ' +
+  '(예: 풍경 사진, 명함, 사람 얼굴, 화면 캡처). 나머지는 비워라.\n' +
+  '- amount 는 총 결제금액(합계)이다. 부가세·공급가액·받은금액·거스름돈이 아니라 ' +
+  '실제 결제한 금액이다.\n' +
   '- 숫자만 넣어라. 쉼표나 원 표시를 넣지 마라.\n' +
   '- 읽을 수 없는 항목은 빈 문자열, amount 는 0 으로 둬라. 추측해서 지어내지 마라.\n' +
   '- 흐릿하거나 일부만 보이면 confidence 를 low 로 하라.';
@@ -121,6 +126,11 @@ function readReceipt(payload) {
     throw new Error('영수증을 읽지 못했습니다. 다시 찍어주세요.');
   }
 
+  if (v.isReceipt === false) {
+    throw new Error('영수증으로 보이지 않습니다' +
+      (v.kind ? ' (' + v.kind + ')' : '') + '. 영수증을 다시 찍어주세요.');
+  }
+
   return {
     date: String(v.date || ''),
     store: String(v.store || ''),
@@ -131,6 +141,140 @@ function readReceipt(payload) {
     cost: res.cost,
     tokens: res.usage.total
   };
+}
+
+// ── OCR 경로 (비교용) ──
+//
+// "AI 를 꼭 써야 하나, OCR 로는 안 되나" 는 의견이 아니라 재봐야 답이 나온다.
+// 구글 드라이브 OCR 은 공짜다. 대신 글자만 나오므로 어느 숫자가 결제금액인지는
+// 따로 골라야 하고, 영수증 양식이 가게마다 달라 규칙이 계속 늘어난다.
+// 아래 둘을 같은 사진에 돌려 비교할 수 있게 해뒀다.
+
+/** 드라이브 OCR 로 이미지에서 글자만 뽑는다. 임시 파일은 지운다 */
+function imageToText_(blob) {
+  var token = ScriptApp.getOAuthToken();
+  var boundary = 'bd' + Utilities.getUuid().replace(/-/g, '');
+  var metadata = {
+    name: 'tmp_receipt_' + Utilities.getUuid(),
+    mimeType: 'application/vnd.google-apps.document'
+  };
+  var head = Utilities.newBlob(
+    '--' + boundary + '\r\n' +
+    'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+    JSON.stringify(metadata) + '\r\n' +
+    '--' + boundary + '\r\n' +
+    'Content-Type: ' + blob.getContentType() + '\r\n\r\n').getBytes();
+  var tail = Utilities.newBlob('\r\n--' + boundary + '--').getBytes();
+
+  var res = UrlFetchApp.fetch(
+    'https://www.googleapis.com/upload/drive/v3/files' +
+    '?uploadType=multipart&ocrLanguage=ko&supportsAllDrives=true',
+    { method: 'post', contentType: 'multipart/related; boundary=' + boundary,
+      payload: head.concat(blob.getBytes()).concat(tail),
+      headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true });
+
+  if (res.getResponseCode() !== 200) {
+    throw new Error('OCR 실패 HTTP ' + res.getResponseCode());
+  }
+  var docId = JSON.parse(res.getContentText()).id;
+  try {
+    return DocumentApp.openById(docId).getBody().getText();
+  } finally {
+    try { DriveApp.getFileById(docId).setTrashed(true); } catch (e) { /* 무시 */ }
+  }
+}
+
+/** OCR 로 뽑은 글자에서 규칙으로 값을 찾아본다 — 이게 어디까지 되는지 보려는 것 */
+function parseReceiptText_(text) {
+  var lines = String(text || '').split(/\r?\n/)
+    .map(function (l) { return l.trim(); }).filter(Boolean);
+
+  // 금액: '합계/총액/결제금액/승인금액' 이 있는 줄의 숫자를 먼저 본다.
+  // 받은금액·거스름돈·부가세·공급가액은 결제금액이 아니므로 제외한다.
+  var amount = 0;
+  var GOOD = /(합\s*계|총\s*액|결제\s*금액|승인\s*금액|총\s*구매액|판매\s*금액)/;
+  var BAD = /(받은|거스름|부가|공급가|면세|과세물품)/;
+  lines.forEach(function (l) {
+    if (!GOOD.test(l) || BAD.test(l)) return;
+    var nums = l.replace(/[^0-9,]/g, ' ').split(/\s+/)
+      .map(function (n) { return Number(n.replace(/,/g, '')); })
+      .filter(function (n) { return n >= 100; });
+    nums.forEach(function (n) { if (n > amount) amount = n; });
+  });
+
+  var m = String(text).match(/(20\d{2})[.\-\/년\s]+(\d{1,2})[.\-\/월\s]+(\d{1,2})/);
+  var date = m ? [m[1], ('0' + m[2]).slice(-2), ('0' + m[3]).slice(-2)].join('-') : '';
+
+  var card = '';
+  var cm = String(text).match(/\d{4}[-*\s]+\*{2,}[-*\s]*\d{0,4}[-*\s]*(\d{4})/);
+  if (cm) card = cm[1];
+
+  return {
+    date: date, amount: amount, card: card,
+    store: lines.length ? lines[0] : '',    // 보통 맨 윗줄이 상호다
+    lines: lines.length,
+    chars: String(text || '').length
+  };
+}
+
+/**
+ * 같은 영수증에 두 방법을 다 돌려 결과를 나란히 본다.
+ * 드라이브 '법인카드 영수증' 폴더의 가장 최근 이미지를 쓴다.
+ */
+function compareReceiptMethods() {
+  var ui = SpreadsheetApp.getUi();
+  var out = [];
+  try {
+    var files = expenseFolder_().getFiles();
+    var newest = null;
+    while (files.hasNext()) {
+      var f = files.next();
+      if (f.getMimeType().indexOf('image/') !== 0) continue;
+      if (!newest || f.getDateCreated() > newest.getDateCreated()) newest = f;
+    }
+    if (!newest) {
+      ui.alert('영수증 인식 비교',
+        '드라이브 "법인카드 영수증" 폴더에 이미지가 없습니다.\n' +
+        '포털에서 영수증을 한 장 등록한 뒤 다시 실행해주세요.', ui.ButtonSet.OK);
+      return;
+    }
+    out.push('대상: ' + newest.getName());
+    out.push('');
+
+    var t0 = new Date().getTime();
+    var text = imageToText_(newest.getBlob());
+    var ocr = parseReceiptText_(text);
+    var t1 = new Date().getTime();
+
+    out.push('[구글 드라이브 OCR + 규칙]  ' + ((t1 - t0) / 1000).toFixed(1) + '초 · 비용 0원');
+    out.push('  글자 ' + ocr.chars + '자 / ' + ocr.lines + '줄');
+    out.push('  상호: ' + (ocr.store || '(못 찾음)'));
+    out.push('  날짜: ' + (ocr.date || '(못 찾음)'));
+    out.push('  금액: ' + (ocr.amount ? ocr.amount.toLocaleString() : '(못 찾음)'));
+    out.push('  카드: ' + (ocr.card || '(못 찾음)'));
+    out.push('');
+
+    t0 = new Date().getTime();
+    var ai = readReceipt({
+      dataBase64: Utilities.base64Encode(newest.getBlob().getBytes()),
+      mimeType: newest.getMimeType()
+    });
+    t1 = new Date().getTime();
+
+    out.push('[비전 모델]  ' + ((t1 - t0) / 1000).toFixed(1) + '초 · 약 ' +
+      (ai.cost == null ? '?' : Math.round(ai.cost * 1400) + '원'));
+    out.push('  상호: ' + (ai.store || '(못 찾음)'));
+    out.push('  날짜: ' + (ai.date || '(못 찾음)'));
+    out.push('  금액: ' + (ai.amount ? ai.amount.toLocaleString() : '(못 찾음)'));
+    out.push('  카드: ' + (ai.card || '(못 찾음)'));
+    out.push('  신뢰도: ' + ai.confidence);
+    out.push('');
+    out.push('영수증 여러 장으로 돌려보고 정하세요. OCR 이 충분하면 비용이 0 입니다.');
+  } catch (e) {
+    out.push('');
+    out.push('실패: ' + e.message);
+  }
+  ui.alert('영수증 인식 비교', out.join('\n'), ui.ButtonSet.OK);
 }
 
 // ── 저장 ──

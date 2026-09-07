@@ -62,6 +62,7 @@ function onOpen() {
 
   ui.createMenu('법인카드')
     .addItem('지출 시트 만들기', 'setupExpenseSheet')
+    .addItem('영수증 인식 비교 (OCR vs AI)', 'compareReceiptMethods')
     .addToUi();
 
   ui.createMenu('접근 권한')
