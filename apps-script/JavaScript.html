@@ -1121,6 +1121,8 @@
   let uploadedDocs = [];            // 브라우저 메모리에만 있는 올린 파일
   let proposePack = null;           // 자료·서식 묶음
   let briefText = '';
+  let rfpForms = [];
+  let rfpQualifications = [];
   const selectedPerf = new Set();
   const selectedHR = new Set();
 
@@ -1131,6 +1133,8 @@
     uploadedDocs = [];
     proposePack = null;
     briefText = '';
+    rfpForms = [];
+    rfpQualifications = [];
     selectedPerf.clear();
     selectedHR.clear();
 
@@ -1339,10 +1343,12 @@
         if (gen !== proposeGen) return;
         renderUploadList();
         rfpBodyText = out.bodyText || '';
+        rfpForms = out.forms || [];
+        rfpQualifications = out.quals || [];
         toast((out.read || []).join(' · '));
-        renderQualifications(out.quals || []);
-        renderFormIndex({ forms: out.forms || [], tables: [], summary: {
-          fillable: (out.forms || []).filter(function (f) { return f.fillable; }).length
+        renderQualifications(rfpQualifications);
+        renderFormIndex({ forms: rfpForms, tables: [], summary: {
+          fillable: rfpForms.filter(function (f) { return f.fillable; }).length
         } });
       })
       .withFailureHandler(function (err) {
@@ -1937,6 +1943,133 @@
     }).join('');
   }
 
+  const PPT_AX_IMPORT_URL = 'http://localhost:3000/integrations/work-prove';
+
+  function selectedPerfRowsForPptAx() {
+    return ALL_RECORDS
+      .filter(function (r) { return selectedPerf.has(perfKeyOf(r)); })
+      .map(function (r) {
+        return {
+          taskName: r.taskName || '',
+          org: r.org || '',
+          amount: r.amount || 0,
+          amountRaw: r.amountRaw || '',
+          year: r.year || '',
+          contractDate: r.contractDate || '',
+          contractPeriod: r.contractPeriod || '',
+          field: r.field || '',
+          desc: r.desc || ''
+        };
+      });
+  }
+
+  function selectedHrRowsForPptAx() {
+    return ALL_HR_RECORDS
+      .filter(function (r) { return selectedHR.has(r.name); })
+      .map(function (r) {
+        return {
+          name: r.name || '',
+          dept: r.dept || '',
+          position: r.position || '',
+          career: r.career || '',
+          joinDate: r.joinDate || '',
+          eduSchool: r.eduSchool || '',
+          eduMajor: r.eduMajor || '',
+          eduDegree: r.eduDegree || ''
+        };
+      });
+  }
+
+  function requirementsForPptAx() {
+    const out = [];
+    rfpQualifications.forEach(function (q, i) {
+      out.push({
+        req_id: 'Q' + (i + 1),
+        title: q.text || '참가자격',
+        detail: q.text || '',
+        source_text: q.text || '',
+        scoring_item_key: null
+      });
+    });
+    rfpForms.forEach(function (f, i) {
+      out.push({
+        req_id: 'F' + (i + 1),
+        title: '[' + f.no + '호] ' + f.name,
+        detail: f.source || '',
+        source_text: f.name || '',
+        scoring_item_key: null
+      });
+    });
+    return out;
+  }
+
+  function scoringItemsForPptAx() {
+    return PROPOSAL_OUTLINE.map(function (o, i) {
+      return {
+        key: 'STD' + (i + 1),
+        name: o.title,
+        points: null
+      };
+    });
+  }
+
+  function outlineItemsForPptAx() {
+    const typeMap = {
+      '일반현황': 'company_profile',
+      '사업 이해도': 'background_analysis',
+      '추진 전략': 'strategy_overview',
+      '세부 수행계획': 'method_detail',
+      '운영 계획': 'method_detail',
+      '홍보 계획': 'method_detail',
+      '인력 투입계획': 'organization',
+      '일정 계획': 'schedule',
+      '품질·위험 관리': 'quality_risk',
+      '기대효과': 'kpi'
+    };
+    return PROPOSAL_OUTLINE.map(function (o, i) {
+      return {
+        scoring_item_key: 'STD' + (i + 1),
+        slide_type_key: typeMap[o.title] || 'requirement_response',
+        slide_count: o.auto ? 1 : 2,
+        requirement_ids: []
+      };
+    });
+  }
+
+  function buildPptAxPayload() {
+    const selectedTrackRecords = selectedPerfRowsForPptAx();
+    const selectedPersonnel = selectedHrRowsForPptAx();
+    const requirements = requirementsForPptAx();
+    return {
+      bid: proposeBid,
+      notice: {
+        bodyText: rfpBodyText || briefText || '',
+        requirements: requirements,
+        scoringItems: scoringItemsForPptAx(),
+        forms: rfpForms,
+        qualifications: rfpQualifications
+      },
+      company: proposePack && proposePack.company ? proposePack.company : {},
+      selectedPersonnel: selectedPersonnel,
+      selectedTrackRecords: selectedTrackRecords,
+      outlineItems: outlineItemsForPptAx()
+    };
+  }
+
+  function sendToPptAx() {
+    if (!proposeBid) return toast('먼저 공고를 선택해주세요.');
+
+    const payload = buildPptAxPayload();
+    const encoded = encodeURIComponent(JSON.stringify(payload));
+    const url = PPT_AX_IMPORT_URL + '#auto=1&payload=' + encoded;
+    const opened = window.open(url, '_blank');
+    if (!opened) {
+      toast('새 창이 차단됐습니다. 팝업 차단을 풀고 다시 눌러주세요.');
+      return;
+    }
+    toast('PPT_AX로 보냈습니다. 열린 화면에서 생성된 사업 ID를 확인하세요.');
+  }
+
   function initProposal() {
     document.getElementById('go-proposal').addEventListener('click', openProposal);
     document.getElementById('back-to-propose').addEventListener('click', function () {
@@ -1945,6 +2078,7 @@
     document.getElementById('proposal-back').addEventListener('click', function () {
       switchTab('propose');
     });
+    document.getElementById('proposal-send-pptax').addEventListener('click', sendToPptAx);
     document.getElementById('proposal-generate').addEventListener('click', generateProposal);
   }
 
