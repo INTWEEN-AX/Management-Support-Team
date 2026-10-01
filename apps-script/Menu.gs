@@ -74,8 +74,17 @@ function onOpen() {
     .addItem('원장 점검', 'debugLeaveData')
     .addToUi();
 
+  ui.createMenu('연차알림')
+    .addItem('오늘 알림 대상 미리보기 (실제 발송 안 함)', 'showAnnualLeavePreview')
+    .addItem('전원 알림 일정 보기', 'showAnnualLeaveSchedule')
+    .addSeparator()
+    .addItem('테스트 메일 보내기 (담당자에게)', 'sendAnnualLeaveTestMail')
+    .addItem('트리거 등록/재등록', 'setupAnnualLeaveTrigger')
+    .addToUi();
+
   ui.createMenu('생일메일')
     .addItem('오늘 발송 대상 미리보기 (실제 발송 안 함)', 'showBirthdayPreview')
+    .addItem('지난 생일자에게 발송 (날짜 지정)', 'sendBirthdayForDate')
     .addSeparator()
     .addItem('트리거 확인', 'showBirthdayTriggers')
     .addItem('트리거 등록/재등록', 'setupBirthdayTrigger')

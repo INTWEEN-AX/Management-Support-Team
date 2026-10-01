@@ -42,7 +42,7 @@ var IMAGE_FILE_ID = '1GY2Rf1c0cjRd-S2niHZjK2KwGrvqSkUn';
 
 /** 매일 발송 시각 (트리거는 지정 시각 기준 ±15분 오차가 있습니다) */
 var SEND_HOUR = 9;
-var SEND_MINUTE = 47;
+var SEND_MINUTE = 30;
 
 /** 발송 기록 키 접두사 — 다른 기능의 스크립트 속성과 섞이지 않게 하는 구분자 */
 var SENT_KEY_PREFIX = 'sent_';
@@ -63,14 +63,18 @@ function previewBirthdayToday() {
   runBirthday_(true);
 }
 
-function runBirthday_(dryRun) {
+/**
+ * @param {boolean} dryRun  true 면 실제로 보내지 않는다
+ * @param {string=} mmdd    'MM-dd'. 비우면 오늘 — 지난 생일자에게 뒤늦게 보낼 때만 넘긴다
+ */
+function runBirthday_(dryRun, mmdd) {
   var sheet = getBirthdaySheet_();
   var data = sheet.getDataRange().getValues();
 
   assertBirthdayColumns_(data, sheet);
 
   var tz = Session.getScriptTimeZone();
-  var todayStr = Utilities.formatDate(new Date(), tz, 'MM-dd');
+  var todayStr = mmdd || Utilities.formatDate(new Date(), tz, 'MM-dd');
   var currentYear = new Date().getFullYear();
   var props = PropertiesService.getScriptProperties();
 
@@ -259,6 +263,42 @@ function showBirthdayPreview() {
       '실제로 발송하지 않았습니다.\n\n' + lines.join('\n'), ui.ButtonSet.OK);
   } catch (e) {
     ui.alert('생일메일 점검 실패', e.message, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * 지정한 날짜(MM-dd)가 생일인 사람에게 지금 바로 보낸다.
+ * 트리거가 빠져서 못 보낸 날을 메울 때 쓴다. 올해 이미 보낸 사람은 건너뛴다.
+ */
+function sendBirthdayForDate() {
+  var ui = SpreadsheetApp.getUi();
+  var res = ui.prompt('지난 생일자에게 발송',
+    '생일 날짜를 MM-dd 형식으로 입력하세요 (예: 09-19)', ui.ButtonSet.OK_CANCEL);
+  if (res.getSelectedButton() !== ui.Button.OK) return;
+
+  var mmdd = res.getResponseText().trim();
+  if (!/^\d{2}-\d{2}$/.test(mmdd)) {
+    ui.alert('형식 오류', 'MM-dd 형식으로 입력하세요 (예: 09-19)', ui.ButtonSet.OK);
+    return;
+  }
+
+  try {
+    var targets = runBirthday_(true, mmdd);
+    if (!targets.length) {
+      ui.alert('발송 대상 없음', mmdd + ' 생일자가 없거나 올해 이미 발송했습니다.', ui.ButtonSet.OK);
+      return;
+    }
+    var lines = targets.map(function (t) {
+      return '· ' + t.name + ' <' + t.email + '>\n    CC: ' + (t.cc.join(', ') || '없음');
+    });
+    var ok = ui.alert(mmdd + ' 생일자 ' + targets.length + '명에게 지금 발송합니다',
+      lines.join('\n'), ui.ButtonSet.OK_CANCEL);
+    if (ok !== ui.Button.OK) return;
+
+    runBirthday_(false, mmdd);
+    ui.alert('완료', '발송했습니다. 결과는 실행 로그에서 확인할 수 있습니다.', ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('발송 실패', e.message, ui.ButtonSet.OK);
   }
 }
 
