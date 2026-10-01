@@ -10,7 +10,9 @@
  */
 
 // ── 실적 스프레드시트 ─────────────────────────────────────────
-var SHEET_ID = '1CSq0xNbc8pg6l159FlxD2raoqqGImeEVu9Ex6JgShes';
+// 실적은 원래 별도 파일('1CSq0xNb...')이었지만 경영기획실DB 안의 탭으로 들어왔다.
+// 옛 ID를 그대로 두면 '문서가 없습니다' 로 실패한다 — 아래 HR_SHEET_ID 와 같은 파일이다.
+var SHEET_ID = '1zeVLhzKPU_oTaBrxHf7gB0EJSt8RcY9PpMInj44JKo8';
 var SHEET_NAME = '실적';
 
 /** 과업명이 빈 행은 건너뛴다 */
