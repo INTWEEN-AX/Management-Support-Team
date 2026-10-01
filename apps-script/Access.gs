@@ -19,13 +19,16 @@
 var ACCESS_MODE_PROP = 'ACCESS_MODE';
 var ADMIN_EMAILS_PROP = 'ADMIN_EMAILS';
 
-/** 접속한 사람의 구글 계정. 확인이 안 되면 빈 문자열 */
+/**
+ * 접속한 사람의 구글 계정. 확인이 안 되면 빈 문자열.
+ *
+ * ⚠ executeAs 를 USER_DEPLOYING 으로 바꾼 뒤부터는 getEffectiveUser() 가
+ *   접속자가 아니라 '배포한 계정' 을 돌려준다. 그걸 쓰면 누가 들어와도
+ *   소유자로 보여서 명단 검사가 통째로 무력해진다. 그래서 접속자를 알려주는
+ *   getActiveUser() 만 쓴다 — 외부 지메일 계정이면 빈 문자열이 나오는데,
+ *   그건 '모르는 사람' 이 맞으므로 그대로 둔다.
+ */
 function currentUserEmail_() {
-  try {
-    // executeAs 가 USER_ACCESSING 이므로 실행 주체 = 접속자다
-    var e = Session.getEffectiveUser().getEmail();
-    if (e) return String(e).trim().toLowerCase();
-  } catch (err) { /* 아래로 */ }
   try {
     return String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
   } catch (err) {
