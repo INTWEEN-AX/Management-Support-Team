@@ -1798,6 +1798,16 @@
     }).length;
   }
 
+  function uniqueList(items) {
+    const seen = {};
+    return (items || []).filter(function (item) {
+      const key = String(item);
+      if (seen[key]) return false;
+      seen[key] = true;
+      return true;
+    });
+  }
+
   function downloadBase64(name, b64) {
     try {
       const bin = atob(b64);
@@ -1830,8 +1840,8 @@
         ok.map(function (r, i) {
           const rep = r.out.report || {};
           const bits = [];
-          if (rep.perf) bits.push('실적 ' + rep.perf + '행');
-          if (rep.hr) bits.push('인력 ' + rep.hr + '행');
+          if (rep.perf) bits.push('실적 ' + rep.perf + '칸');
+          if (rep.hr) bits.push('인력 ' + rep.hr + '칸');
           if (rep.company) bits.push('회사정보 ' + rep.company + '칸');
           if (rep.bid) bits.push('공고정보 ' + rep.bid + '칸');
 
