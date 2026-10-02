@@ -66,8 +66,12 @@ function previewBirthdayToday() {
 /**
  * @param {boolean} dryRun  true 면 실제로 보내지 않는다
  * @param {string=} mmdd    'MM-dd'. 비우면 오늘 — 지난 생일자에게 뒤늦게 보낼 때만 넘긴다
+ * @param {boolean=} force  올해 이미 보냈어도 보낸다.
+ *                          매일 도는 자동 발송은 중복을 막아야 하지만, 사람이 날짜를
+ *                          찍어서 '지난 생일자에게 발송' 을 누르는 건 못 보낸 걸 메우거나
+ *                          다시 보내려는 뜻이다. 거기서 막으면 쓸 수가 없다.
  */
-function runBirthday_(dryRun, mmdd) {
+function runBirthday_(dryRun, mmdd, force) {
   var sheet = getBirthdaySheet_();
   var data = sheet.getDataRange().getValues();
 
@@ -84,6 +88,8 @@ function runBirthday_(dryRun, mmdd) {
     : DriveApp.getFileById(IMAGE_FILE_ID).getBlob().setName('headerImage');
 
   var targets = [];
+  // 생일은 맞는데 올해 이미 보낸 사람. '대상 없음' 과 구분해 보여주려고 따로 모은다
+  var alreadySent = [];
 
   for (var i = 1; i < data.length; i++) {
     var name = data[i][0];
@@ -101,8 +107,10 @@ function runBirthday_(dryRun, mmdd) {
     if (Utilities.formatDate(bDate, tz, 'MM-dd') !== todayStr) continue;
 
     var propKey = SENT_KEY_PREFIX + email + '_' + currentYear;
-    if (props.getProperty(propKey) === '1') {
+    var sentBefore = (props.getProperty(propKey) === '1');
+    if (sentBefore && !force) {
       Logger.log('이미 발송함(올해): ' + name + ' (' + email + ')');
+      alreadySent.push(name + ' <' + email + '>');
       continue;
     }
 
@@ -111,11 +119,18 @@ function runBirthday_(dryRun, mmdd) {
       return ccEmail.toLowerCase() !== String(email).toLowerCase();
     });
 
-    targets.push({ name: name, email: email, cc: ccList, propKey: propKey });
+    targets.push({ name: name, email: email, cc: ccList, propKey: propKey,
+                   resend: sentBefore });
   }
 
+  // 배열에 얹어 보낸다 — 호출부가 targets.length / targets.map 을 그대로 쓰고 있어서
+  // 반환형을 객체로 바꾸면 그쪽을 다 손봐야 한다
+  targets.alreadySent = alreadySent;
+  targets.checkedDate = todayStr;
+
   if (!targets.length) {
-    Logger.log('오늘(' + todayStr + ') 생일자 없음 — 발송 대상 0명');
+    Logger.log('오늘(' + todayStr + ') 발송 대상 0명' +
+      (alreadySent.length ? ' — 생일자 ' + alreadySent.length + '명은 올해 이미 발송함' : ' (생일자 없음)'));
     return targets;
   }
 
@@ -253,7 +268,15 @@ function showBirthdayPreview() {
   try {
     var targets = runBirthday_(true);
     if (!targets.length) {
-      ui.alert('생일메일 미리보기', '오늘 발송 대상이 없습니다.\n(명단은 정상적으로 읽혔습니다)', ui.ButtonSet.OK);
+      var sent = targets.alreadySent || [];
+      ui.alert('생일메일 미리보기',
+        sent.length
+          ? '오늘(' + targets.checkedDate + ') 생일자는 있지만 올해 이미 발송했습니다.\n\n' +
+            sent.map(function (x) { return '· ' + x; }).join('\n') +
+            '\n\n다시 보내려면 스크립트 속성에서 sent_<이메일>_' +
+            new Date().getFullYear() + ' 를 지우세요.'
+          : '오늘(' + targets.checkedDate + ') 생일자가 없습니다.\n(명단은 정상적으로 읽혔습니다)',
+        ui.ButtonSet.OK);
       return;
     }
     var lines = targets.map(function (t) {
@@ -283,19 +306,21 @@ function sendBirthdayForDate() {
   }
 
   try {
-    var targets = runBirthday_(true, mmdd);
+    var targets = runBirthday_(true, mmdd, true);
     if (!targets.length) {
-      ui.alert('발송 대상 없음', mmdd + ' 생일자가 없거나 올해 이미 발송했습니다.', ui.ButtonSet.OK);
+      ui.alert('발송 대상 없음', mmdd + ' 생일자가 명단에 없습니다.', ui.ButtonSet.OK);
       return;
     }
     var lines = targets.map(function (t) {
-      return '· ' + t.name + ' <' + t.email + '>\n    CC: ' + (t.cc.join(', ') || '없음');
+      return '· ' + t.name + ' <' + t.email + '>' +
+        (t.resend ? '  (올해 이미 보냄 — 다시 보냅니다)' : '') +
+        '\n    CC: ' + (t.cc.join(', ') || '없음');
     });
     var ok = ui.alert(mmdd + ' 생일자 ' + targets.length + '명에게 지금 발송합니다',
       lines.join('\n'), ui.ButtonSet.OK_CANCEL);
     if (ok !== ui.Button.OK) return;
 
-    runBirthday_(false, mmdd);
+    runBirthday_(false, mmdd, true);
     ui.alert('완료', '발송했습니다. 결과는 실행 로그에서 확인할 수 있습니다.', ui.ButtonSet.OK);
   } catch (e) {
     ui.alert('발송 실패', e.message, ui.ButtonSet.OK);
