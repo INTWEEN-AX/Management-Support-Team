@@ -1731,10 +1731,10 @@
       dataBase64: dataBase64,
       engine: 'ppt_ax',
       report: {
-        company: (data.filled || []).length,
-        bid: 0,
-        perf: 0,
-        hr: 0,
+        company: countFilledByPrefix(data.filled || [], 'company.'),
+        bid: countFilledByPrefix(data.filled || [], 'bid.'),
+        perf: countFilledByPrefix(data.filled || [], 'track_records.'),
+        hr: countFilledByPrefix(data.filled || [], 'personnel.'),
         tables: 1,
         foundTables: [],
         overflow: [],
@@ -1790,6 +1790,12 @@
       reader.onerror = function () { reject(new Error('결과 파일을 읽지 못했습니다.')); };
       reader.readAsDataURL(blob);
     });
+  }
+
+  function countFilledByPrefix(items, prefix) {
+    return (items || []).filter(function (item) {
+      return String(item).indexOf(prefix) === 0;
+    }).length;
   }
 
   function downloadBase64(name, b64) {
