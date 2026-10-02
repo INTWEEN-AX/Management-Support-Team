@@ -20,6 +20,8 @@
   let activeFieldFilter = null; // clicking legend/composition toggles this
   let fieldChart, yearChart;
 
+  const PPT_AX_API_BASE_URL = 'http://localhost:8000';
+
   const STATUS_COLORS = {
     '재직(상근)': 'var(--accent)',
     '재직(비상근)': 'var(--field-edu)',
@@ -1668,23 +1670,128 @@
     const results = [];
     let done = 0;
     targets.forEach(function (u) {
-      google.script.run
-        .withSuccessHandler(function (out) {
+      fillFormViaPptAx(u, selection)
+        .then(function (out) {
           results.push({ ok: true, form: u, out: out });
           if (++done === targets.length) finishGenerate(results, btn);
         })
-        .withFailureHandler(function (err) {
-          results.push({ ok: false, form: u, error: String(err.message || err) });
-          if (++done === targets.length) finishGenerate(results, btn);
-        })
-        .fillFormFromUpload({
-          name: u.name, dataBase64: u.dataBase64, selection: selection,
-          bidNo: proposeBid.no, bidOrd: proposeBid.ord
+        .catch(function (pptAxErr) {
+          console.warn('PPT_AX fill failed. Falling back to Apps Script.', pptAxErr);
+          google.script.run
+            .withSuccessHandler(function (out) {
+              out.engine = 'apps_script';
+              results.push({ ok: true, form: u, out: out });
+              if (++done === targets.length) finishGenerate(results, btn);
+            })
+            .withFailureHandler(function (err) {
+              results.push({ ok: false, form: u, error: String(err.message || err) });
+              if (++done === targets.length) finishGenerate(results, btn);
+            })
+            .fillFormFromUpload({
+              name: u.name, dataBase64: u.dataBase64, selection: selection,
+              bidNo: proposeBid.no, bidOrd: proposeBid.ord
+            });
         });
     });
   }
 
   /** base64 결과를 그대로 파일로 내려받는다 (드라이브를 거치지 않는다) */
+  async function fillFormViaPptAx(uploaded, selection) {
+    if (!/\.hwpx$/i.test(uploaded.name)) {
+      throw new Error('PPT_AX는 hwpx 서식만 채울 수 있습니다.');
+    }
+
+    const file = base64ToFile(uploaded.dataBase64, uploaded.name, 'application/x-hwpml');
+    const form = new FormData();
+    form.append('file', file, uploaded.name);
+    form.append('values_json', JSON.stringify(buildPptAxHwpxValues(selection)));
+
+    const response = await fetch(PPT_AX_API_BASE_URL + '/forms/hwpx/fill', {
+      method: 'POST',
+      body: form
+    });
+    let data = null;
+    try {
+      data = await response.json();
+    } catch (e) {
+      data = null;
+    }
+    if (!response.ok) {
+      throw new Error(data && data.detail ? data.detail : 'PPT_AX 서식 작성에 실패했습니다.');
+    }
+
+    const fileResponse = await fetch(PPT_AX_API_BASE_URL + data.download_url);
+    if (!fileResponse.ok) {
+      throw new Error('PPT_AX 결과 파일을 내려받지 못했습니다.');
+    }
+    const resultBlob = await fileResponse.blob();
+    const dataBase64 = await blobToBase64(resultBlob);
+    return {
+      name: data.output_filename || uploaded.name.replace(/\.hwpx$/i, '_pptax.hwpx'),
+      dataBase64: dataBase64,
+      engine: 'ppt_ax',
+      report: {
+        company: (data.filled || []).length,
+        bid: 0,
+        perf: 0,
+        hr: 0,
+        tables: 1,
+        foundTables: [],
+        overflow: [],
+        pptAxMissing: data.missing || [],
+        pptAxSkipped: data.skipped || []
+      },
+      missing: (data.missing || []).map(function (m) {
+        return m.field_key || m.message || '';
+      }).filter(Boolean),
+      dummy: []
+    };
+  }
+
+  function buildPptAxHwpxValues(selection) {
+    const company = (proposePack && proposePack.company) || {};
+    return {
+      company: {
+        name: company.name || company.companyName || '인트윈',
+        ceo_name: company.ceo_name || company.ceoName || company.ceo || company.representative || '',
+        business_no: company.business_no || company.businessNo || company.bizNo || '',
+        corporate_no: company.corporate_no || company.corpNo || '',
+        address: company.address || '',
+        phone: company.phone || company.tel || '',
+        email: company.email || ''
+      },
+      bid: {
+        name: proposeBid && proposeBid.name || '',
+        no: proposeBid && proposeBid.no || '',
+        noticeOrg: proposeBid && proposeBid.noticeOrg || '',
+        demandOrg: proposeBid && proposeBid.demandOrg || '',
+        budget: proposeBid && proposeBid.budget || '',
+        closeDt: proposeBid && proposeBid.closeDt || ''
+      },
+      personnel: selectedHrRowsForPptAx(),
+      track_records: selectedPerfRowsForPptAx(),
+      selection: selection || {}
+    };
+  }
+
+  function base64ToFile(base64, name, type) {
+    const bin = atob(base64);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new File([arr], name, { type: type || 'application/octet-stream' });
+  }
+
+  function blobToBase64(blob) {
+    return new Promise(function (resolve, reject) {
+      const reader = new FileReader();
+      reader.onload = function () {
+        resolve(String(reader.result || '').split(',')[1] || '');
+      };
+      reader.onerror = function () { reject(new Error('결과 파일을 읽지 못했습니다.')); };
+      reader.readAsDataURL(blob);
+    });
+  }
+
   function downloadBase64(name, b64) {
     try {
       const bin = atob(b64);
