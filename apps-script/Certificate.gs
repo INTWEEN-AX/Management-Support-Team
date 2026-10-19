@@ -133,6 +133,51 @@ function issueSelected() {
   }
 }
 
+function issueEmploymentCertificateForHR(payload) {
+  payload = payload || {};
+  var today = new Date();
+  var warn = [];
+  var hire = toDate_(payload.joinDate || payload.hireDate);
+  if (!hire && (payload.joinDate || payload.hireDate)) {
+    warn.push('입사일을 날짜로 해석하지 못해 입력값을 그대로 넣었습니다.');
+  }
+
+  var hireText = hire
+    ? ymdKorean_(hire)
+    : String(payload.joinDate || payload.hireDate || '').trim();
+  if (!hireText) warn.push('입사일이 비어 있습니다.');
+
+  var person = {
+    name: String(payload.name || '').trim(),
+    dept: String(payload.dept || '').trim(),
+    title: String(payload.position || payload.title || '').trim(),
+    address: String(payload.address || '').trim(),
+    rrn: buildRrn_(payload.rrn || '', payload.birthDate || payload.birth || '', payload.gender || '', warn),
+    hireText: hireText,
+    period: hireText + ' ~ ' + today.getFullYear() + '년 현재',
+    issuedText: today.getFullYear() + '년 ' + pad2_(today.getMonth() + 1) + '월 ' + pad2_(today.getDate()) + '일',
+    issuedStamp: Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyyMMdd'),
+    warn: warn
+  };
+  if (!person.name) throw new Error('이름이 비어 있어 재직증명서를 만들 수 없습니다.');
+
+  var blob = renderHwpx_(loadTemplateBlob_(), person);
+  var file = outputFolder_().createFile(blob);
+
+  // 웹앱이 executeAs=USER_DEPLOYING 으로 돌아서 파일 소유자는 배포 계정이다.
+  // 발급을 누른 사람에게는 권한이 없어 직접 다운로드 URL 에서 403 이 났다.
+  // 방금 만든 이 파일에만 링크 공유를 건다 — 템플릿·출력 폴더·인사 시트는 그대로 둔다.
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+  return {
+    name: person.name,
+    fileId: file.getId(),
+    url: file.getUrl(),
+    downloadUrl: 'https://drive.google.com/uc?export=download&id=' + file.getId(),
+    warnings: warn
+  };
+}
+
 // ─────────────────────────────────────────────────────────────
 // hwpx 렌더링
 // ─────────────────────────────────────────────────────────────
