@@ -85,6 +85,8 @@ function onOpen() {
     .addItem('인력현황 데이터 파싱 점검', 'debugHRData')
     .addSeparator()
     .addItem('누가 들어올 수 있나 점검', 'checkAccessList')
+    .addSeparator()
+    .addItem('포털 폴더 공유 풀기 (한 번만)', 'openPortalFolders')
     .addToUi();
 }
 

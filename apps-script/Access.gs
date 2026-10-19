@@ -174,3 +174,54 @@ function checkAccessList() {
 
   ui.alert('접근 권한 점검', out.join('\n'), ui.ButtonSet.OK);
 }
+
+// ─────────────────────────────────────────────────────────────
+// 포털이 만드는 파일을 누구나 열 수 있게 (한 번만 실행)
+//
+// 웹앱이 executeAs=USER_DEPLOYING 이라 포털이 만든 파일의 소유자는 배포
+// 계정이다. 그래서 버튼을 누른 사람도, 시트의 링크를 클릭한 사람도 403 을
+// 받았다. 폴더에 권한을 걸면 드라이브가 그 안의 파일까지 내려주므로
+// 이미 만들어진 것까지 한 번에 풀린다.
+//
+// ⚠ 이 폴더들은 '링크를 아는 사람은 누구나' 볼 수 있게 된다. 로그인도
+//   필요 없다. 영수증·실적 첨부가 그 대상이라는 점을 알고 쓰는 것이다.
+//   되돌리려면 드라이브에서 각 폴더의 공유를 '제한됨' 으로 바꾸면 된다.
+//
+// 소유 계정으로 실행해야 한다. 다른 계정이 누르면 그 폴더만 실패로 찍힌다.
+// ─────────────────────────────────────────────────────────────
+
+var PORTAL_SHARED_FOLDERS = [
+  { name: '법인카드 영수증',   id: '19fjWL-VyfayphTN9rkkxGJvzLlg0zh1x' },
+  { name: '실적_첨부파일',      id: '1BjItqVz9S8YErwxhNFtJbtyQh9-gRTcE' },
+  { name: '실적_첨부파일 (2)',  id: '1p5LddnqOpHDLsR5hftquBDBh8Y4WM7Ob' },
+  { name: '입찰공고_첨부',      id: '17wWE9xJW06wvw2-nhuFwceLa5bXm0G3Z' },
+  { name: '생성물 (서식 출력)', id: '1mL6dT6DMJg2bBmEnYtjcyUArkQCsv0-R' },
+  { name: '재직증명서_발급내역', id: '1wDwZA9l6ery579qvjovNFERiW_T6yIDM' }
+];
+
+function openPortalFolders() {
+  var ui = SpreadsheetApp.getUi();
+  var ok = ui.alert(
+    '포털 폴더 공유',
+    '아래 폴더를 "링크가 있는 모든 사용자 — 뷰어" 로 바꿉니다.\n' +
+    PORTAL_SHARED_FOLDERS.map(function (f) { return '· ' + f.name; }).join('\n') +
+    '\n\n로그인 없이도 링크만 알면 열립니다. 진행할까요?',
+    ui.ButtonSet.OK_CANCEL);
+  if (ok !== ui.Button.OK) return;
+
+  var out = [];
+  PORTAL_SHARED_FOLDERS.forEach(function (f) {
+    try {
+      var folder = DriveApp.getFolderById(f.id);
+      folder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      out.push('완료  ' + f.name + '  (' + folder.getName() + ')');
+    } catch (e) {
+      out.push('실패  ' + f.name + ' — ' + e.message);
+    }
+  });
+
+  out.push('');
+  out.push('재직증명서는 이 폴더들 밖(드라이브 루트)에 생성됩니다.');
+  out.push('그건 발급할 때 파일마다 따로 공유가 걸립니다.');
+  ui.alert('포털 폴더 공유 결과', out.join('\n'), ui.ButtonSet.OK);
+}
