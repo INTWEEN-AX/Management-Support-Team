@@ -355,12 +355,16 @@
             <span class="step-hint">hwpx 필수</span>
           </div>
           <div class="source-desc">
-            나라장터 첨부는 대부분 <b>.hwp</b>라 프로그램이 읽지 못합니다.
-            한컴오피스에서 <b>다른 이름으로 저장 → .hwpx</b>로 바꿔 올려주세요.
-            <a href="https://www.hancom.com/support/faqCenter/faq/detail/3128" target="_blank" rel="noopener">한컴 일괄 변환기 안내 →</a>
+            나라장터 첨부는 대부분 <b>.hwp</b>입니다. 한컴오피스에서 <b>파일 → 다른 이름으로 저장 → HWPX 문서</b>로 저장한 뒤 올려주세요.
+            <a href="https://www.hancom.com/support/faqCenter/faq/detail/3128" target="_blank" rel="noopener">한컴 HWP 일괄 변환기 안내 →</a>
+          </div>
+          <div class="sample-actions" aria-label="합성 예시 서식">
+            <div><strong>합성 예시로 먼저 확인</strong><span>실제 인력·실적 대신 가상 데이터만 넣은 HWPX를 만듭니다. DB에 저장하지 않습니다.</span></div>
+            <button type="button" class="btn-ghost" id="sample-staff">참여인력 예시 HWPX</button>
+            <button type="button" class="btn-ghost" id="sample-performance">수행실적 예시 HWPX</button>
           </div>
           <label class="upload-zone" id="upload-zone">
-            <input type="file" id="upload-input" multiple accept=".hwpx,.pdf" hidden>
+            <input type="file" id="upload-input" multiple accept=".hwpx,.pdf,.hwp" hidden>
             <span class="upload-icon">↑</span>
             <span class="upload-text">제안요청서 · 입찰공고문 hwpx를 올려주세요</span>
             <span class="upload-sub">제안요청서에 서식 목차가, 입찰공고문에 참가자격이 있습니다</span>

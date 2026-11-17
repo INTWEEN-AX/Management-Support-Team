@@ -1322,6 +1322,22 @@
     margin-bottom: 10px;
   }
 
+  .sample-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px;
+    margin: 0 0 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--grey-5);
+  }
+  .sample-actions > div { display: grid; gap: 3px; flex: 1 1 260px; }
+  .sample-actions strong { color: var(--primary-black); font-size: var(--fs-p); }
+  .sample-actions span { color: var(--grey-2); font-size: var(--fs-small); line-height: 1.45; }
+  .sample-actions button:disabled { opacity: .55; cursor: wait; }
+
   /* 업로드 영역 */
   .upload-zone {
     display: flex;
