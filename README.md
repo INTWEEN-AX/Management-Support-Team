@@ -2,7 +2,7 @@
 
 구글 스프레드시트에 흩어져 있던 실적·인력 데이터를 하나의 화면에서 조회하고,
 재직증명서를 자동 발급하는 사내 도구입니다.
-**Google Apps Script 단독 구성 — 별도 서버 없음, 운영비 0원.**
+**기존 운영 도구는 Google Apps Script 구성입니다. 새 React AX 앱은 별도 `web/`에 추가했으며 아직 배포하지 않았습니다.**
 
 | 기능 | 형태 | 하는 일 |
 |---|---|---|
@@ -291,3 +291,21 @@ python tools/make_sample.py    # 샘플_재직증명서_홍길동.hwpx 생성 �
 - [ ] **웹앱에서 재직증명서 발급** — 인력현황 탭에서 바로 발급 버튼을 다는 방안.
       `getHRData()` 가 이미 있어 이름으로 찾아 발급하는 함수만 추가하면 됩니다.
       활성 시트에 의존하지 않게 되는 이점도 있습니다.
+
+
+## 2026-11-17 신규 AX React 앱 (`web/`)
+
+기존 Apps Script와 `FormFill.gs`·`FormAnalyzer.gs`는 수정하지 않았습니다. 기존 도구의 표 분류·라벨/열 별칭·빈 셀 채움·초과 감지 로직을 새 JavaScript 모듈로 재사용했습니다. `web/`와 로컬 import 도구는 `.claspignore`에서 제외해 clasp 배포에 섞이지 않게 했습니다. 실제 clasp push·새 배포는 하지 않았습니다.
+
+새 앱은 공고 선택 → HWPX 업로드/제출요건·매핑 → 승인 인력·실적 검색·선택 → 반영 미리보기 → 생성·재열기 확인·다운로드 흐름입니다. 사용법·허용 필드·DB/RLS·설치·검증·배포 전제조건은 [web/README.md](web/README.md), 단계별 상태는 [PROGRESS.md](PROGRESS.md)를 보세요.
+
+새 앱에서 사용하는 프로젝트는 AX `oancjcvjtpbipodewjki`이며 APFS 및 기존 `intw-ax` 소스와 분리합니다. 원본 Apps Script의 생년월일·주소·주민번호·연락처·첨부파일 기능을 새 앱으로 가져오지 않았습니다. 기존 도구의 권한·공유 설정도 변경하지 않았습니다. 새 앱의 schema는 미적용 초안이며 실제 직원/실적 행은 아직 import하지 않았습니다.
+
+
+## 최종 외부 상태 재확인 — 초기 SQL 재실행 금지
+
+작업 시작의 읽기 전용 조회에서는 AX public 업무 테이블이 없었으나 최종 조회에서는 `ax_proposal_mvp` migration(version `20261117080248`)과 RLS가 켜진 `ax_*` 테이블 8개가 발견됐다. 이 작업 세션/병행 에이전트는 운영 migration·SQL 쓰기를 호출하지 않았다. 변경 주체는 확인하지 않았으며 외부 작업을 되돌리지 않는다. profiles/staff/performance/participation/bid/mapping/generation 건수는 모두 0이다. 실제 행은 조회하지 않았다.
+
+현행 컬럼·RLS 이름은 새 앱 계약과 맞지만 함수 메타데이터상 통합 학력 `education` 매핑과 신규 생성의 활성 인력 검사 보완이 필요하다. `001_ax_schema.sql`은 빈 프로젝트용 참고본이므로 **현재 프로젝트에 다시 적용하지 않는다**. 기존 함수 정의/권한을 비공개로 보관하고 `003_existing_schema_alignment.sql`의 두 함수만 실제 정의와 비교한 뒤 승인 적용한다. 이 파일은 행·Auth bootstrap·다른 함수·기존 테이블을 삭제하거나 덮어쓰지 않는다. 실패 전에는 transaction rollback, 적용 후에는 보관한 두 함수 정의로만 되돌리며 기존 데이터/감사 이력은 보존한다.
+
+현재 마지막 단계는 초기 SQL 일괄 실행이 아니라 기존 migration 출처/상태 확인 → 차이 SQL 검토 → 초기 승인 계정/환경변수/허용 열 import → 실제 JWT 검증이다. 운영 상태와 로컬 검증을 구분한다.

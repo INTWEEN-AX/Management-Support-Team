@@ -9,3 +9,7 @@ _backup/**
 **/*.hwpx
 **/.git/**
 **/node_modules/**
+
+# 새 React 앱과 로컬 import 도구는 Apps Script에 업로드하지 않습니다.
+web/**
+tools/**
