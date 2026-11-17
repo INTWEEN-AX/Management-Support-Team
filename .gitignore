@@ -17,3 +17,8 @@ Thumbs.db
 # 배포 전 확인용 단독 미리보기 (생성물)
 portal_preview.html
 logo_trimmed.png
+
+/tools/hwp-converter/node_modules/
+/tools/hwp-converter/package/
+/tools/hwp-converter/*.tgz
+/tools/hwp-converter/audit.json

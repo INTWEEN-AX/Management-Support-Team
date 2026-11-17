@@ -313,3 +313,12 @@ python tools/make_sample.py    # 샘플_재직증명서_홍길동.hwpx 생성 �
 현행 컬럼·RLS 이름은 새 앱 계약과 맞지만 함수 메타데이터상 통합 학력 `education` 매핑과 신규 생성의 활성 인력 검사 보완이 필요하다. `001_ax_schema.sql`은 빈 프로젝트용 참고본이므로 **현재 프로젝트에 다시 적용하지 않는다**. 기존 함수 정의/권한을 비공개로 보관하고 `003_existing_schema_alignment.sql`의 두 함수만 실제 정의와 비교한 뒤 승인 적용한다. 이 파일은 행·Auth bootstrap·다른 함수·기존 테이블을 삭제하거나 덮어쓰지 않는다. 실패 전에는 transaction rollback, 적용 후에는 보관한 두 함수 정의로만 되돌리며 기존 데이터/감사 이력은 보존한다.
 
 현재 마지막 단계는 초기 SQL 일괄 실행이 아니라 기존 migration 출처/상태 확인 → 차이 SQL 검토 → 초기 승인 계정/환경변수/허용 열 import → 실제 JWT 검증이다. 운영 상태와 로컬 검증을 구분한다.
+
+### Apps Script: local legacy HWP conversion
+
+The Apps Script upload flow now converts ordinary HWP 5.0–5.1 to HWPX locally
+(maximum 10 MiB), preserving the original without transmitting it. Protected,
+distribution-only and unsupported formats fail with Hancom Save As guidance.
+Generated HWPX is checked before entering the existing flow. Always compare final
+layout in Hancom; conversion can lose document features. Synthetic sample buttons
+remain available. See [converter review, licenses and rebuild instructions](tools/hwp-converter/THIRD_PARTY.md).

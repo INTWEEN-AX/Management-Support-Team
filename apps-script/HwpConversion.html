@@ -1,0 +1,43 @@
+<script>
+(function () {
+  const originals = new Map(); // Original File objects never enter network payloads.
+  let pending = Promise.resolve();
+  async function convert(file) {
+    if (!file.size || file.size > 10 * 1024 * 1024) throw new Error('HWP는 0바이트 초과 10MB 이하만 지원합니다.');
+    originals.set(file.name, file);
+    const buffer = await file.arrayBuffer();
+    const result = await new Promise(function (resolve, reject) {
+      const url = URL.createObjectURL(new Blob([window.HWP_WORKER_SOURCE], { type: 'text/javascript' }));
+      let worker;
+      let timer;
+      function finish(error, value) {
+        clearTimeout(timer);
+        if (worker) worker.terminate();
+        URL.revokeObjectURL(url);
+        error ? reject(error) : resolve(value);
+      }
+      try {
+        worker = new Worker(url);
+        timer = setTimeout(function () { finish(new Error('변환 시간 30초를 초과했습니다.')); }, 30000);
+        worker.onerror = function () { finish(new Error('브라우저 변환기를 실행하지 못했습니다.')); };
+        worker.onmessage = function (event) {
+          event.data.error ? finish(new Error(event.data.error)) : finish(null, event.data);
+        };
+        worker.postMessage(buffer, [buffer]);
+      } catch (error) { finish(new Error('이 브라우저에서 로컬 변환을 실행할 수 없습니다.')); }
+    });
+    if (!result.output || !result.xml?.length) throw new Error('변환 결과가 비어 있습니다.');
+    result.xml.forEach(function (xml) {
+      if (/<!DOCTYPE|<!ENTITY/i.test(xml)) throw new Error('HWPX XML 선언이 허용되지 않습니다.');
+      const doc = new DOMParser().parseFromString(xml, 'application/xml');
+      if (doc.getElementsByTagName('parsererror').length) throw new Error('변환 HWPX XML 검증 실패');
+    });
+    return new File([result.output], file.name.replace(/\.hwp$/i, '_변환.hwpx'), { type: 'application/hwp+zip' });
+  }
+  window.convertLegacyHwp = function (file) {
+    const next = pending.then(function () { return convert(file); });
+    pending = next.catch(function () {});
+    return next;
+  };
+})();
+</script>

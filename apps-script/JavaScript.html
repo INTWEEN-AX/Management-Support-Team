@@ -1470,8 +1470,13 @@
   function handleFiles(files) {
     files.forEach(function (file) {
       if (/\.hwp$/i.test(file.name)) {
-        logUpload(file.name, 'fail',
-          '.hwp 직접 읽기는 지원하지 않습니다. 한컴에서 HWPX 문서로 저장한 뒤 다시 올려주세요. 위 변환 안내를 확인하세요.');
+        logUpload(file.name, 'busy', '브라우저에서 변환 중…');
+        window.convertLegacyHwp(file).then(function (converted) {
+          handleFiles([converted]);
+          logUpload(file.name, 'ok', 'HWPX 검증 완료 · 원본은 이 탭에 보관 · 한컴 최종 검토 필수');
+        }).catch(function (error) {
+          logUpload(file.name, 'fail', error.message + ' 한컴에서 HWPX로 저장해 다시 올려주세요.');
+        });
         return;
       }
       if (!/\.(hwpx|pdf)$/i.test(file.name)) {

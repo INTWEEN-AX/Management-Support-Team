@@ -355,7 +355,7 @@
             <span class="step-hint">hwpx 필수</span>
           </div>
           <div class="source-desc">
-            나라장터 첨부는 대부분 <b>.hwp</b>입니다. 한컴오피스에서 <b>파일 → 다른 이름으로 저장 → HWPX 문서</b>로 저장한 뒤 올려주세요.
+            일반 <b>HWP 5.0~5.1 (최대 10MB)</b>는 브라우저 안에서 HWPX로 변환합니다. 원본 HWP는 서버로 보내지 않고 이 탭에 보관합니다. 암호·DRM·배포용·HWP 3은 지원하지 않습니다. 머리말·각주·테두리·도형 등이 달라질 수 있어 <b>최종 제출 전 한컴에서 원본과 시각적으로 비교</b>하세요. 실패하면 한컴에서 다른 이름으로 저장 → HWPX를 이용하세요.
             <a href="https://www.hancom.com/support/faqCenter/faq/detail/3128" target="_blank" rel="noopener">한컴 HWP 일괄 변환기 안내 →</a>
           </div>
           <div class="sample-actions" aria-label="합성 예시 서식">
@@ -366,7 +366,7 @@
           <label class="upload-zone" id="upload-zone">
             <input type="file" id="upload-input" multiple accept=".hwpx,.pdf,.hwp" hidden>
             <span class="upload-icon">↑</span>
-            <span class="upload-text">제안요청서 · 입찰공고문 hwpx를 올려주세요</span>
+            <span class="upload-text">제안요청서 · 입찰공고문 HWP / HWPX / PDF를 올려주세요</span>
             <span class="upload-sub">제안요청서에 서식 목차가, 입찰공고문에 참가자격이 있습니다</span>
           </label>
           <div class="upload-log" id="upload-log"></div>
@@ -636,6 +636,8 @@
 
   </div>
 
+  <?!= include('HwpConverterVendor'); ?>
+  <?!= include('HwpConversion'); ?>
   <?!= include('JavaScript'); ?>
 </body>
 </html>

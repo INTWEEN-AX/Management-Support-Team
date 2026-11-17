@@ -1,0 +1,22 @@
+{
+  "name": "hwp-converter",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test test.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@ssabrojs/hwpxjs": "0.4.0",
+    "cfb": "1.2.2",
+    "jszip": "3.10.1"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  },
+  "private": true
+}
