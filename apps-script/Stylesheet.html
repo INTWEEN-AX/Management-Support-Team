@@ -1338,6 +1338,30 @@
   .sample-actions span { color: var(--grey-2); font-size: var(--fs-small); line-height: 1.45; }
   .sample-actions button:disabled { opacity: .55; cursor: wait; }
 
+  .rfp-example-panel {
+    padding: 12px; margin: 0 0 12px; border: 1px solid var(--border);
+    border-radius: 8px; background: #fff;
+  }
+  .rfp-example-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:10px; }
+  .rfp-example-head > div { display:grid; gap:4px; min-width:0; }
+  .rfp-example-head strong { color:var(--primary-black); font-size:var(--fs-p); }
+  .rfp-example-head span { color:var(--grey-2); font-size:var(--fs-small); line-height:1.5; }
+  .rfp-example-search input { width:180px; min-height:34px; padding:6px 9px; border:1px solid var(--border); border-radius:6px; font:inherit; }
+  .rfp-example-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; }
+  .rfp-example-item { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:4px 8px; padding:9px 10px; text-align:left; border:1px solid var(--border); border-radius:7px; background:var(--grey-5); cursor:pointer; }
+  .rfp-example-item:hover:not(:disabled) { border-color:var(--primary-2); background:var(--primary-5); }
+  .rfp-example-item:disabled { opacity:.65; cursor:wait; }
+  .rfp-example-item[hidden] { display:none; }
+  .rfp-example-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--primary-black); font-size:var(--fs-small); font-weight:var(--fw-medium); }
+  .rfp-example-item small { color:var(--grey-3); font-size:var(--fs-caption); white-space:nowrap; }
+  .rfp-example-item b { grid-column:1/-1; color:var(--primary-2); font-size:var(--fs-caption); font-weight:var(--fw-medium); }
+  .rfp-example-status { min-height:1em; margin:8px 0 0; color:var(--grey-2); font-size:var(--fs-caption); }
+  @media(max-width:700px) {
+    .rfp-example-head { flex-direction:column; }
+    .rfp-example-search,.rfp-example-search input { width:100%; }
+    .rfp-example-grid { grid-template-columns:1fr; }
+  }
+
   /* 업로드 영역 */
   .upload-zone {
     display: flex;

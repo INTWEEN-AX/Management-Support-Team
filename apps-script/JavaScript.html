@@ -3064,8 +3064,52 @@
     toastTimer = setTimeout(function () { el.classList.remove('show'); }, 2600);
   }
 
+  function initDriveProposalExamples() {
+    const grid = document.getElementById('rfp-example-grid');
+    const search = document.getElementById('rfp-example-search');
+    const status = document.getElementById('rfp-example-status');
+    if (!grid) return;
+    search.addEventListener('input', function () {
+      const query = search.value.trim().toLocaleLowerCase();
+      grid.querySelectorAll('[data-rfp-example]').forEach(function (button) {
+        button.hidden = query && !button.textContent.toLocaleLowerCase().includes(query);
+      });
+    });
+    grid.querySelectorAll('[data-rfp-example]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        const key = button.getAttribute('data-rfp-example');
+        const action = button.querySelector('b');
+        button.disabled = true;
+        action.textContent = 'Drive에서 불러오는 중…';
+        status.textContent = '예시 파일을 안전하게 읽고 있습니다.';
+        google.script.run
+          .withSuccessHandler(function (result) {
+            button.disabled = false;
+            action.textContent = '업로드에 추가 →';
+            if (!result || !result.dataBase64 || !result.name) {
+              status.textContent = '파일을 읽지 못했습니다.';
+              toast('예시 파일 응답이 비어 있습니다.');
+              return;
+            }
+            const file = base64ToFile(result.dataBase64, result.name, result.mimeType || 'application/octet-stream');
+            handleFiles([file]);
+            status.textContent = result.name + '을(를) 업로드 목록에 추가했습니다.';
+            toast(/\.hwp$/i.test(result.name) ? '예시를 추가했습니다. HWP를 브라우저에서 HWPX로 변환합니다.' : '예시를 업로드 목록에 추가했습니다.');
+          })
+          .withFailureHandler(function (error) {
+            button.disabled = false;
+            action.textContent = '업로드에 추가 →';
+            status.textContent = '파일을 불러오지 못했습니다. 다시 시도해 주세요.';
+            toast('예시 파일 불러오기 실패: ' + String(error.message || error));
+          })
+          .getDriveProposalExample(key);
+      });
+    });
+  }
+
   function initProposeModal() {
     initUpload();
+    initDriveProposalExamples();
     [['sample-staff', 'staff'], ['sample-performance', 'performance'], ['sample-mixed', 'mixed']].forEach(function (item) {
       document.getElementById(item[0]).addEventListener('click', function () {
         const button = document.getElementById(item[0]);
