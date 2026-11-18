@@ -1,10 +1,8 @@
 <script>
 (function () {
-  const originals = new Map(); // Original File objects never enter network payloads.
   let pending = Promise.resolve();
   async function convert(file) {
     if (!file.size || file.size > 10 * 1024 * 1024) throw new Error('HWP는 0바이트 초과 10MB 이하만 지원합니다.');
-    originals.set(file.name, file);
     const buffer = await file.arrayBuffer();
     const result = await new Promise(function (resolve, reject) {
       const url = URL.createObjectURL(new Blob([window.HWP_WORKER_SOURCE], { type: 'text/javascript' }));

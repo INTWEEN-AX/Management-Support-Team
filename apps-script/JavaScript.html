@@ -1473,7 +1473,7 @@
         logUpload(file.name, 'busy', '브라우저에서 변환 중…');
         window.convertLegacyHwp(file).then(function (converted) {
           handleFiles([converted]);
-          logUpload(file.name, 'ok', 'HWPX 검증 완료 · 원본은 이 탭에 보관 · 한컴 최종 검토 필수');
+          logUpload(file.name, 'ok', 'HWPX 변환·검증 완료 (원본 HWP는 전송되지 않음) · 한컴 최종 검토 필수');
         }).catch(function (error) {
           logUpload(file.name, 'fail', error.message + ' 한컴에서 HWPX로 저장해 다시 올려주세요.');
         });
@@ -2735,7 +2735,9 @@
               toast('예시 파일을 만들었지만 브라우저가 다운로드를 막았습니다.');
               return;
             }
-            toast('합성 예시 HWPX를 만들었습니다. 가상 데이터만 포함됩니다.');
+            // 다운로드와 함께 아래 업로드 목록에도 바로 올려 클릭만으로 다음 단계를 체험하게 한다.
+            handleFiles([base64ToFile(result.dataBase64, result.name, 'application/hwp+zip')]);
+            toast('합성 예시 HWPX를 내려받고 업로드 목록에 추가했습니다. 가상 데이터만 포함됩니다.');
           })
           .withFailureHandler(function (error) {
             button.disabled = false;
