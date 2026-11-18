@@ -332,4 +332,4 @@ remain available. See [converter review, licenses and rebuild instructions](tool
 
 Practice without real data: use the example templates (staff / performance / combined) or **가상 데이터로 체험** (synthetic rows only; nothing is read from or written to the sheet).
 
-Deployment is unchanged: `clasp push` + redeploy the web app. Note `Utilities.zip` does not guarantee that `mimetype` stays the first STORED entry; open results in Hancom once after deploying.
+Deployment is unchanged: `clasp push` + redeploy the web app. Output HWPX is packed by an in-repo STORED ZIP writer (`zipStored_` in FormFill.gs) so `mimetype` is first and uncompressed; all entries are stored uncompressed, so files are larger. Only syntax-checked, not executed in Apps Script: open one result in Hancom after deploying. Page numbers are still not shown (HWPX has no reliable page data); only section/table/row/column.

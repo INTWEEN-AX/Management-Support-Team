@@ -367,7 +367,7 @@ function fillCore_(payload, previewOnly) {
 
   return JSON.parse(JSON.stringify({
     name: outName,
-    dataBase64: Utilities.base64Encode(Utilities.zip(out, outName).getBytes()),
+    dataBase64: Utilities.base64Encode(zipStored_(out)),
     report: report,
     demo: !!demo,
     missing: company._missing || [],
@@ -924,4 +924,46 @@ function refreshNoticeAttachments(bidNo, bidOrd) {
     break;
   }
   return getProposalPack(bidNo, bidOrd);
+}
+
+// ── 무압축(STORED) ZIP 작성기 ──────────────────────────────────────────
+// Utilities.zip 은 엔트리를 deflate 해 `mimetype` 이 STORED 가 아니게 된다.
+// HWPX 규약(첫 엔트리 + 무압축)을 지키기 위해 모든 엔트리를 STORED 로 직접 쓴다. (용량은 커짐)
+var CRC_TABLE_ = null;
+function crc32_(bytes) {
+  if (!CRC_TABLE_) {
+    CRC_TABLE_ = [];
+    for (var n = 0; n < 256; n++) {
+      var c = n;
+      for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      CRC_TABLE_[n] = c >>> 0;
+    }
+  }
+  var crc = 0xFFFFFFFF;
+  for (var i = 0; i < bytes.length; i++) crc = CRC_TABLE_[(crc ^ bytes[i]) & 255] ^ (crc >>> 8);
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+function le_(v, n) { var o = []; for (var i = 0; i < n; i++) o.push((v >>> (8 * i)) & 255); return o; }
+function zipStored_(blobs) {
+  var chunks = [], central = [], offset = 0;
+  blobs.forEach(function (blob) {
+    var nameBytes = Utilities.base64Decode(Utilities.base64Encode(blob.getName(), Utilities.Charset.UTF_8))
+      .map(function (b) { return b & 255; });
+    var data = blob.getBytes().map(function (b) { return b & 255; });
+    var crc = crc32_(data);
+    var head = [].concat(le_(0x04034b50, 4), le_(20, 2), le_(0x0800, 2), le_(0, 2), le_(0, 2), le_(0x21, 2),
+      le_(crc, 4), le_(data.length, 4), le_(data.length, 4), le_(nameBytes.length, 2), le_(0, 2), nameBytes);
+    central.push([].concat(le_(0x02014b50, 4), le_(20, 2), le_(20, 2), le_(0x0800, 2), le_(0, 2), le_(0, 2), le_(0x21, 2),
+      le_(crc, 4), le_(data.length, 4), le_(data.length, 4), le_(nameBytes.length, 2), le_(0, 2), le_(0, 2),
+      le_(0, 2), le_(0, 2), le_(0, 4), le_(offset, 4), nameBytes));
+    chunks.push(head, data);
+    offset += head.length + data.length;
+  });
+  var cdSize = 0;
+  central.forEach(function (c) { cdSize += c.length; chunks.push(c); });
+  chunks.push([].concat(le_(0x06054b50, 4), le_(0, 2), le_(0, 2), le_(central.length, 2), le_(central.length, 2),
+    le_(cdSize, 4), le_(offset, 4), le_(0, 2)));
+  var all = [];
+  chunks.forEach(function (c) { for (var i = 0; i < c.length; i++) all.push(c[i] > 127 ? c[i] - 256 : c[i]); });
+  return all;
 }
