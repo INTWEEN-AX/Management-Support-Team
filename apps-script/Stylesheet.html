@@ -1800,6 +1800,41 @@
     margin-top: 10px;
   }
   .gen-links a { text-decoration: none; height: 30px; padding: 0 14px; }
+  .first-run { margin: 0 0 14px; padding: 10px 14px; border: 1px solid #e3dccb; border-radius: 8px; background: #fffaf0; font-size: 13px; }
+  .first-run summary { cursor: pointer; font-weight: 700; }
+  .first-run ol { margin: 8px 0 4px; padding-left: 20px; }
+  .first-run li { margin: 3px 0; }
+  .fine { font-size: 12px; color: #666; margin: 4px 0; }
+  .demo-group { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .demo-group select { padding: 6px 8px; border: 1px solid #ccc; border-radius: 6px; }
+  .hwp-jobs { display: grid; gap: 6px; margin: 8px 0; }
+  .hwp-job { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 10px; border: 1px solid #cfd8e3; border-radius: 6px; background: #f6f9fc; font-size: 12px; }
+  .hwp-job.failed { border-color: #e0a9a4; background: #fff5f4; }
+  .hwp-job .hwp-action { flex: 1 1 100%; color: #7a2f2a; }
+  .hwp-btns { display: inline-flex; gap: 6px; }
+  .spinner { width: 12px; height: 12px; border: 2px solid #b8c6d6; border-top-color: #2f6fed; border-radius: 50%; animation: hwpspin 0.8s linear infinite; }
+  @keyframes hwpspin { to { transform: rotate(360deg); } }
+  .target-meta { font-size: 11px; color: #2f6fed; margin-left: 6px; }
+  .target-src { font-size: 11px; border: 1px solid #ccc; background: #fff; border-radius: 4px; padding: 2px 6px; margin-left: 6px; cursor: pointer; }
+  .target-warn { font-size: 11px; color: #8a5a00; margin: 0 0 6px 26px; }
+  .selected-tray { margin: 6px 0; }
+  .tray-note { font-size: 12px; color: #555; margin-bottom: 4px; }
+  .sel-chips { display: flex; flex-wrap: wrap; gap: 6px; max-height: 120px; overflow-y: auto; }
+  .sel-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 10px; border: 1px solid #cfd8e3; border-radius: 14px; background: #f6f9fc; font-size: 12px; }
+  .sel-chip.perf { background: #f6fbf8; }
+  .sel-chip.warn { border-color: #e4b95a; background: #fff8e8; }
+  .sel-chip em { font-style: normal; color: #8a5a00; font-size: 11px; }
+  .sel-chip button { border: 0; background: transparent; cursor: pointer; font-size: 13px; min-width: 24px; min-height: 24px; border-radius: 50%; }
+  .fill-preview { max-height: 55vh; overflow: auto; margin-bottom: 8px; padding: 10px 12px; border: 1px solid #cfd8e3; border-radius: 8px; background: #fff; }
+  .gen-progress { margin: 10px 0; padding: 10px 12px; border: 1px solid #cfd8e3; border-radius: 8px; background: #f6f9fc; }
+  .gen-progress progress { width: 100%; height: 8px; }
+  .gen-progress ul { list-style: none; margin: 6px 0; padding: 0; font-size: 12px; }
+  .gen-progress li.ok { color: #1f7a4d; } .gen-progress li.bad { color: #b3413c; }
+  .gen-sub { font-weight: 600; margin: 10px 0 4px; font-size: 12px; }
+  .gen-pv-title { font-size: 11px; color: #666; margin: 8px 0 2px; }
+  .warn-text { color: #b3413c; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  @media (max-width: 640px) { .hwp-job, .sel-chip { font-size: 13px; } .hwp-btns button, .sel-chip button { min-height: 40px; min-width: 40px; } .demo-group { width: 100%; } }
   .gen-review { margin: 8px 0; font-size: 12px; }
   .gen-review summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
   .gen-review-wrap { overflow-x: auto; max-height: 320px; overflow-y: auto; border: 1px solid #ddd; border-radius: 6px; }

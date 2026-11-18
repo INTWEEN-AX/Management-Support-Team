@@ -1121,6 +1121,9 @@
   let proposeGen = 0;
   let proposePerfList = [];
   let uploadedDocs = [];            // 브라우저 메모리에만 있는 올린 파일
+  let hwpJobs = [];                 // 변환 중이거나 실패한 HWP (재시도·취소용)
+  let hwpJobSeq = 0;
+  let genToken = 0;                 // 취소·재실행 시 늦게 도착한 결과를 버리기 위한 표식
   let proposePack = null;           // 자료·서식 묶음
   let briefText = '';
   let rfpForms = [];
@@ -1249,6 +1252,7 @@
       status.className = 'checklist warn';
       status.innerHTML = '<span class="check-icon warn">!</span>' +
         '<span>제안요청서를 올려야 서식을 채울 수 있습니다.</span>';
+      renderHwpJobs(status);
       return;
     }
 
@@ -1260,6 +1264,7 @@
       '<span class="upload-hint">서식이 들어 있는 문서만 체크하세요. ' +
       '공고문·안내문은 채울 표가 없어 빈 결과물만 생깁니다.</span></span>';
 
+    renderHwpJobs(status);
     const list = document.createElement('div');
     list.className = 'target-list';
     list.innerHTML = uploadedDocs.map(function (u, i) {
@@ -1273,11 +1278,18 @@
           '<span class="target-size">' + size + '</span>' + del +
         '</div>';
       }
+      const conv = u.conversion;
+      const convMeta = conv ? '<span class="target-meta">HWP에서 변환 · 구역 ' + conv.sections + ' · 표 ' + conv.tables + '개</span>' : '';
+      const src = u.sourceFile ? '<button type="button" class="target-src" data-src="' + i + '" ' +
+        'title="변환 전 HWP 원본 그대로 내려받기">HWP 원본</button>' : '';
+      const convWarn = conv ? '<div class="target-warn">' +
+        (conv.tables === 0 ? '⚠ 표가 하나도 없습니다. 변환에서 표가 문단으로 바뀌었을 수 있어 자동 채움이 되지 않을 수 있습니다. ' : '') +
+        '구조(구역·표)만 검증했습니다. 글꼴·여백·도형 등 레이아웃이 원본과 같다는 보장은 없으니 한컴에서 원본과 비교하세요.</div>' : '';
       return '<label class="target-row">' +
         '<input type="checkbox" data-idx="' + i + '"' + (u.checked ? ' checked' : '') + '>' +
-        '<span class="target-name">' + escapeHtml(u.name) + '</span>' +
-        '<span class="target-size">' + size + '</span>' + del +
-      '</label>';
+        '<span class="target-name">' + escapeHtml(u.name) + '</span>' + convMeta +
+        '<span class="target-size">' + size + '</span>' + src + del +
+      '</label>' + convWarn;
     }).join('');
     status.appendChild(list);
 
@@ -1297,10 +1309,20 @@
       });
     });
 
+    list.querySelectorAll('[data-src]').forEach(function (b) {
+      b.addEventListener('click', function (event) {
+        event.preventDefault(); event.stopPropagation();
+        const doc = uploadedDocs[Number(b.dataset.src)];
+        if (doc && doc.sourceFile) saveFile(doc.sourceFile);
+      });
+    });
+
     const box = document.createElement('div');
     box.className = 'forms-actions';
     addAction(box, 'btn-ghost', '공고문에서 서식·참가자격 읽기', readDocs);
     addAction(box, 'btn-ghost', '올린 파일 비우기', function () {
+      hwpJobs.forEach(function (job) { if (job.controller) job.controller.abort(); });
+      hwpJobs = [];
       uploadedDocs = [];
       document.getElementById('upload-log').innerHTML = '';
       document.getElementById('step-qual').style.display = 'none';
@@ -1309,6 +1331,71 @@
       renderProposeSelected();
     });
     status.appendChild(box);
+  }
+
+  /** 변환 중·실패한 HWP 행. 취소/재시도/닫기를 제공한다. */
+  function renderHwpJobs(container) {
+    if (!hwpJobs.length) return;
+    const box = document.createElement('div');
+    box.className = 'hwp-jobs';
+    box.setAttribute('aria-live', 'polite');
+    box.innerHTML = hwpJobs.map(function (job) {
+      if (job.state === 'converting') {
+        return '<div class="hwp-job" role="status"><span class="spinner" aria-hidden="true"></span>' +
+          '<b>' + escapeHtml(job.file.name) + '</b><span>' + escapeHtml(job.stage || '') + '</span>' +
+          '<button type="button" class="btn-ghost" data-job-cancel="' + job.id + '">취소</button></div>';
+      }
+      return '<div class="hwp-job failed" role="alert"><b>' + escapeHtml(job.file.name) + '</b>' +
+        '<span>' + escapeHtml(job.error) + '</span><span class="hwp-action">' + escapeHtml(job.action) + '</span>' +
+        '<span class="hwp-btns"><button type="button" class="btn-ghost" data-job-retry="' + job.id + '">다시 시도</button>' +
+        '<button type="button" class="btn-ghost" data-job-close="' + job.id + '">닫기</button></span></div>';
+    }).join('');
+    const find = function (attr, el) { return hwpJobs.filter(function (j) { return String(j.id) === el.getAttribute(attr); })[0]; };
+    box.querySelectorAll('[data-job-cancel]').forEach(function (b) {
+      b.addEventListener('click', function () { const j = find('data-job-cancel', b); if (j && j.controller) j.controller.abort(); });
+    });
+    box.querySelectorAll('[data-job-retry]').forEach(function (b) {
+      b.addEventListener('click', function () { const j = find('data-job-retry', b); if (j) startHwpJob(j.file, j); });
+    });
+    box.querySelectorAll('[data-job-close]').forEach(function (b) {
+      b.addEventListener('click', function () { const j = find('data-job-close', b); if (j) { removeHwpJob(j); renderUploadList(); } });
+    });
+    container.appendChild(box);
+  }
+
+  function removeHwpJob(job) { hwpJobs = hwpJobs.filter(function (j) { return j !== job; }); }
+
+  /** .hwp 를 브라우저 안에서 HWPX 로 바꾼다. 원본 File 은 건드리지 않고 job 에 보관한다. */
+  function startHwpJob(file, existing) {
+    const job = existing || { id: ++hwpJobSeq, file: file };
+    job.state = 'converting'; job.stage = '대기 중…'; job.error = ''; job.action = '';
+    job.controller = new AbortController();
+    if (!existing) hwpJobs.push(job);
+    renderUploadList();
+    window.convertLegacyHwp(file, {
+      signal: job.controller.signal,
+      onStage: function (code, text) { job.stage = text; renderUploadList(); }
+    }).then(function (converted) {
+      removeHwpJob(job);
+      converted.sourceFile = file;        // 변환 전 원본 — 내려받기용으로만 보관, 서버로 보내지 않는다
+      handleFiles([converted]);
+    }).catch(function (error) {
+      if (error && error.code === 'CANCELLED') {
+        removeHwpJob(job); renderUploadList(); toast('변환을 취소했습니다.'); return;
+      }
+      job.state = 'failed';
+      job.error = (error && error.message) || '변환에 실패했습니다.';
+      job.action = (error && error.action) || '한컴오피스에서 HWPX로 저장해 다시 올려주세요.';
+      renderUploadList();
+    });
+  }
+
+  function saveFile(file) {
+    const url = URL.createObjectURL(file);
+    const a = document.createElement('a');
+    a.href = url; a.download = file.name;
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 2000);
   }
 
   /** 목록에서 파일 하나를 뺀다 (브라우저 메모리에서만 지우면 된다) */
@@ -1470,13 +1557,7 @@
   function handleFiles(files) {
     files.forEach(function (file) {
       if (/\.hwp$/i.test(file.name)) {
-        logUpload(file.name, 'busy', '브라우저에서 변환 중…');
-        window.convertLegacyHwp(file).then(function (converted) {
-          handleFiles([converted]);
-          logUpload(file.name, 'ok', 'HWPX 변환·검증 완료 (원본 HWP는 전송되지 않음) · 한컴 최종 검토 필수');
-        }).catch(function (error) {
-          logUpload(file.name, 'fail', error.message + ' 한컴에서 HWPX로 저장해 다시 올려주세요.');
-        });
+        startHwpJob(file);          // 진행 단계·취소·재시도는 목록의 변환 행에서 보여 준다
         return;
       }
       if (!/\.(hwpx|pdf)$/i.test(file.name)) {
@@ -1501,9 +1582,11 @@
           size: file.size,
           fillable: ext === 'hwpx',
           checked: ext === 'hwpx',
+          sourceFile: file.sourceFile || null,
+          conversion: file.conversionInfo || null,
           dataBase64: String(reader.result).split(',')[1] || ''
         });
-        logUpload(file.name, 'ok', '준비됨');
+        logUpload(file.name, 'ok', file.conversionInfo ? '변환·검증 완료' : '준비됨');
         renderUploadList();
         renderProposeSelected();
       };
@@ -1652,46 +1735,138 @@
     if (selectedHR.size) parts.push('인력 ' + selectedHR.size + '명');
     document.getElementById('propose-selected').textContent =
       parts.length ? parts.join(' · ') + ' 선택됨' : '선택 없음';
+    renderSelectedTray();
+  }
+
+  /** 선택한 인력·실적을 칩으로 보여 주고, 빠진 항목은 "확인 필요"로 표시한다 (값을 지어내지 않는다). */
+  function renderSelectedTray() {
+    const tray = document.getElementById('selected-tray');
+    if (!tray) return;
+    const chips = [];
+    let flagged = 0;
+    ALL_HR_RECORDS.filter(function (r) { return selectedHR.has(r.name); }).forEach(function (r) {
+      const missing = [];
+      if (!r.position) missing.push('직위');
+      if (!(r.eduSchool || r.eduDegree)) missing.push('학력');
+      if (!r.career) missing.push('경력');
+      if (missing.length) flagged++;
+      chips.push('<span class="sel-chip' + (missing.length ? ' warn' : '') + '"><b>' + escapeHtml(r.name) + '</b>' +
+        (missing.length ? '<em>확인 필요: ' + missing.join('·') + '</em>' : '') +
+        '<button type="button" data-rm-hr="' + escapeHtml(r.name) + '" aria-label="' + escapeHtml(r.name) + ' 선택 해제">✕</button></span>');
+    });
+    ALL_RECORDS.filter(function (r) { return selectedPerf.has(perfKeyOf(r)); }).forEach(function (r) {
+      const missing = [];
+      if (!r.org) missing.push('발주처');
+      if (!(r.amount || r.amountRaw)) missing.push('금액');
+      if (!(r.contractPeriod || r.contractDate)) missing.push('기간');
+      if (missing.length) flagged++;
+      const title = String(r.taskName || '').slice(0, 26);
+      chips.push('<span class="sel-chip perf' + (missing.length ? ' warn' : '') + '"><b>' + escapeHtml(title) + '</b>' +
+        (missing.length ? '<em>확인 필요: ' + missing.join('·') + '</em>' : '') +
+        '<button type="button" data-rm-perf="' + escapeHtml(perfKeyOf(r)) + '" aria-label="' + escapeHtml(title) + ' 선택 해제">✕</button></span>');
+    });
+    if (!chips.length) { tray.innerHTML = ''; return; }
+    tray.innerHTML = '<div class="tray-note">' + (flagged
+      ? '⚠ ' + flagged + '건에 빠진 항목이 있습니다. 서식의 해당 칸은 비워 두며 값을 만들어 넣지 않습니다.'
+      : '선택한 항목의 필요한 값이 모두 있습니다.') + '</div><div class="sel-chips">' + chips.join('') + '</div>';
+    tray.querySelectorAll('[data-rm-hr]').forEach(function (b) {
+      b.addEventListener('click', function () { selectedHR.delete(b.dataset.rmHr); renderProposePeople(); renderProposeSelected(); });
+    });
+    tray.querySelectorAll('[data-rm-perf]').forEach(function (b) {
+      b.addEventListener('click', function () { selectedPerf.delete(b.dataset.rmPerf); renderPerfList(); renderProposeSelected(); });
+    });
   }
 
   // ── 3단계: 서식 생성 ──
 
-  function generateForms() {
+  function fillTargets() {
     const targets = uploadedDocs.filter(function (u) { return u.fillable && u.checked; });
-    if (!targets.length) return toast('2단계에서 채울 문서를 먼저 체크해주세요.');
-    if (!selectedPerf.size && !selectedHR.size) {
-      return toast('실적이나 인력을 먼저 선택해주세요.');
+    if (!targets.length) { toast('2단계에서 채울 문서를 먼저 체크해주세요.'); return null; }
+    if (!selectedPerf.size && !selectedHR.size) { toast('실적이나 인력을 먼저 선택해주세요.'); return null; }
+    return targets;
+  }
+
+  function currentSelection() {
+    return { perfKeys: Array.from(selectedPerf), hrNames: Array.from(selectedHR) };
+  }
+
+  function clearGenOutput() {
+    document.querySelectorAll('.gen-result, #gen-progress').forEach(function (el) { el.remove(); });
+  }
+
+  /** 문서별 진행 상태. 취소하면 이후 도착하는 결과는 버린다. */
+  function renderGenProgress(status, onCancel) {
+    let box = document.getElementById('gen-progress');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'gen-progress';
+      box.className = 'gen-progress';
+      box.setAttribute('role', 'status');
+      box.setAttribute('aria-live', 'polite');
+      document.getElementById('step-forms').insertAdjacentElement('afterend', box);
     }
+    const done = status.filter(function (x) { return x.state === '완료' || x.state === '실패'; }).length;
+    box.innerHTML = '<div class="gen-title">서식 작성 중 · ' + done + ' / ' + status.length + '</div>' +
+      '<progress max="' + status.length + '" value="' + done + '" aria-label="서식 작성 진행률"></progress>' +
+      '<ul>' + status.map(function (x) {
+        return '<li class="' + (x.state === '실패' ? 'bad' : x.state === '완료' ? 'ok' : '') + '">' +
+          escapeHtml(x.name) + ' — ' + x.state + '</li>';
+      }).join('') + '</ul>' +
+      '<button type="button" class="btn-ghost" id="gen-cancel">취소</button>';
+    document.getElementById('gen-cancel').addEventListener('click', onCancel);
+  }
 
-    const selection = {
-      perfKeys: Array.from(selectedPerf),
-      hrNames: Array.from(selectedHR)
-    };
+  function generateForms() {
+    const targets = fillTargets();
+    if (!targets) return;
+    const selection = currentSelection();
+    closeFillPreview();
+    clearGenOutput();
 
+    const token = ++genToken;
     const btn = document.getElementById('fill-forms');
     btn.disabled = true;
     btn.textContent = '생성 중…';
 
+    const status = targets.map(function (u) { return { name: u.name, state: '작성 중' }; });
     const results = [];
     let done = 0;
-    targets.forEach(function (u) {
+    function cancel() {
+      genToken++;
+      btn.disabled = false; btn.textContent = '서식 자동작성';
+      clearGenOutput();
+      toast('서식 생성을 취소했습니다. 이미 서버에서 처리된 결과는 버려지고 원본은 그대로입니다.');
+    }
+    function settle(i, state) {
+      if (token !== genToken) return;
+      status[i].state = state;
+      if (++done === targets.length) { clearGenOutput(); finishGenerate(results, btn); }
+      else renderGenProgress(status, cancel);
+    }
+    renderGenProgress(status, cancel);
+
+    targets.forEach(function (u, i) {
       fillFormViaPptAx(u, selection)
         .then(function (out) {
+          if (token !== genToken) return;
           results.push({ ok: true, form: u, out: out });
-          if (++done === targets.length) finishGenerate(results, btn);
+          settle(i, '완료');
         })
         .catch(function (pptAxErr) {
+          if (token !== genToken) return;
           console.warn('PPT_AX fill failed. Falling back to Apps Script.', pptAxErr);
           google.script.run
             .withSuccessHandler(function (out) {
+              if (token !== genToken) return;
               out.engine = 'apps_script';
               out.fallbackReason = String(pptAxErr && pptAxErr.name === 'AbortError' ? '응답 시간 초과' : (pptAxErr && pptAxErr.message) || '연결 실패');
               results.push({ ok: true, form: u, out: out });
-              if (++done === targets.length) finishGenerate(results, btn);
+              settle(i, '완료');
             })
             .withFailureHandler(function (err) {
+              if (token !== genToken) return;
               results.push({ ok: false, form: u, error: String(err.message || err) });
-              if (++done === targets.length) finishGenerate(results, btn);
+              settle(i, '실패');
             })
             .fillFormFromUpload({
               name: u.name, dataBase64: u.dataBase64, selection: selection,
@@ -1699,6 +1874,63 @@
             });
         });
     });
+  }
+
+  // ── 생성 전 반영 미리보기 (매핑 검토) ──
+  let previewToken = 0;
+  function closeFillPreview() {
+    previewToken++;
+    const box = document.getElementById('fill-preview');
+    if (box) { box.innerHTML = ''; box.style.display = 'none'; }
+  }
+
+  function previewForms() {
+    const targets = fillTargets();
+    if (!targets) return;
+    const selection = currentSelection();
+    const box = document.getElementById('fill-preview');
+    const token = ++previewToken;
+    box.style.display = '';
+    box.innerHTML = '<div class="gen-title" role="status">반영 미리보기를 계산하는 중… (파일은 만들지 않습니다)</div><progress aria-label="미리보기 계산 중"></progress>';
+    Promise.all(targets.map(function (u) {
+      return new Promise(function (resolve) {
+        google.script.run
+          .withSuccessHandler(function (r) { resolve({ ok: true, u: u, r: r }); })
+          .withFailureHandler(function (e) { resolve({ ok: false, u: u, error: String(e.message || e) }); })
+          .previewFillFromUpload({ name: u.name, dataBase64: u.dataBase64, selection: selection, bidNo: proposeBid.no, bidOrd: proposeBid.ord });
+      });
+    })).then(function (list) {
+      if (token !== previewToken) return;
+      box.innerHTML = '<div class="gen-title">반영 미리보기 — 생성 전에 표 매핑과 들어갈 값을 확인하세요</div>' +
+        '<p class="fine">머리글 이름으로 열을 자동 매핑합니다. 틀렸다면 서식의 머리글 문구를 바꿔 다시 올리세요. (수동 열 지정은 web/ 도구에서 지원)</p>' +
+        list.map(function (x) {
+          if (!x.ok) return '<div class="gen-row failed"><div class="gen-name">' + escapeHtml(x.u.name) + '</div><div class="gen-warn">' + escapeHtml(x.error.split('\n')[0]) + '</div></div>';
+          return '<div class="gen-row"><div class="gen-name">' + escapeHtml(x.u.name) + '</div>' +
+            renderFillReview({ engine: 'apps_script', report: x.r.report }, { preview: true }) + '</div>';
+        }).join('') +
+        '<div class="gen-links"><button type="button" class="btn-primary" id="preview-go">이대로 서식 생성</button> ' +
+        '<button type="button" class="btn-ghost" id="preview-close">닫기</button></div>';
+      document.getElementById('preview-go').addEventListener('click', generateForms);
+      document.getElementById('preview-close').addEventListener('click', closeFillPreview);
+    });
+  }
+
+  /** 가상 인력·실적으로 예시 서식을 채워 보는 체험 (시트·Drive를 읽거나 쓰지 않는다) */
+  function runDemo() {
+    const kind = document.getElementById('demo-kind').value;
+    const btn = document.getElementById('demo-run');
+    btn.disabled = true;
+    clearGenOutput();
+    google.script.run
+      .withSuccessHandler(function (res) {
+        btn.disabled = false;
+        finishGenerate([{ ok: true, form: res.source || { name: '합성 서식' }, out: res }], document.createElement('button'), { demo: true });
+      })
+      .withFailureHandler(function (error) {
+        btn.disabled = false;
+        toast('체험 실행 실패: ' + error.message);
+      })
+      .runSyntheticDemo(kind);
   }
 
   /** base64 결과를 그대로 파일로 내려받는다 (드라이브를 거치지 않는다) */
@@ -1843,44 +2075,92 @@
     }
   }
 
-  /** 채운 칸 검토 표 — 항목·값·출처·위치(구역/표/행·열). 쪽 번호는 hwpx 파일만으로 알 수 없어 표시하지 않는다. */
-  function renderFillReview(out) {
+  const FILL_FIELD_LABELS = { _index: '연번', name: '성명', dept: '소속', position: '직위', edu: '최종학력', eduSchool: '학교', eduMajor: '전공', eduDegree: '학위', career: '경력', joinDate: '입사일', taskName: '과업명', org: '발주처', amount: '계약금액', period: '수행기간', contractDate: '계약일', desc: '개요' };
+  function fillFieldLabel(field) {
+    if (field === '_role') return '담당업무 (데이터 원본 없음 — 직접 기입)';
+    if (field === 'birthDate') return '생년월일 (정책상 채우지 않음)';
+    return FILL_FIELD_LABELS[field] || field;
+  }
+  function locText(section, table) {
+    if (!section) return '위치 정보 없음';
+    const m = /section(\d+)\.xml$/.exec(section);
+    return (m ? '구역 ' + (Number(m[1]) + 1) : section) + ' · 표 ' + table;
+  }
+
+  /**
+   * 채운(또는 채울) 내용 검토 — 항목·값·출처·위치(구역/표/행·열)·검증, 표 매핑, 건너뜀·못 채움·넘침.
+   * 쪽 번호는 hwpx 파일만으로 알 수 없어 표시하지 않는다.
+   */
+  function renderFillReview(out, opts) {
+    opts = opts || {};
     const rep = out.report || {};
     const entries = rep.entries || [];
     const engineLabel = out.engine === 'ppt_ax' ? 'PPT_AX' : 'Apps Script';
     const notes = [];
+    if (out.demo) notes.push('가상 인력·실적으로 채운 체험 결과입니다. 실제 자료가 아닙니다.');
     if (out.fallbackReason) {
       notes.push('PPT_AX 엔진을 쓰지 못해(' + escapeHtml(out.fallbackReason) + ') Apps Script 엔진으로 작성했습니다.');
     }
     function where(e) {
-      if (!e.section) return '위치 정보 없음';
-      const m = /section(\d+)\.xml$/.exec(e.section);
-      return (m ? '구역 ' + (Number(m[1]) + 1) : e.section) + ' · 표 ' + e.table + ' · ' + e.row + '행 ' + e.col + '열';
+      return e.section ? locText(e.section, e.table) + ' · ' + e.row + '행 ' + e.col + '열' : '위치 정보 없음';
     }
     const verified = entries.filter(function (e) { return e.verified === true; }).length;
     const unverified = entries.filter(function (e) { return e.verified === false; }).length;
     const rows = entries.map(function (e) {
-      const check = e.verified === true ? '✔ 결과 파일에서 확인' : (e.verified === false ? '⚠ 확인 필요' : '—');
+      const check = opts.preview ? '—' : (e.verified === true ? '✔ 결과 파일에서 확인' : (e.verified === false ? '⚠ 확인 필요' : '—'));
       return '<tr><td>' + escapeHtml(e.label || e.field) + '</td><td>' + (e.value ? escapeHtml(e.value) : '<em>결과 파일에서 확인</em>') +
         '</td><td>' + escapeHtml(e.source || '') + '</td><td>' + escapeHtml(where(e)) + '</td><td>' + check + '</td></tr>';
     }).join('');
-    const skipped = (rep.skipped || []).map(function (k) {
-      return '<li>' + escapeHtml(k.label) + ' — ' + escapeHtml(k.reason) + '</li>';
+
+    const kindLabel = { hr: '인력 표', perf: '실적 표', label: '라벨형 표(회사·공고 정보)' };
+    const maps = (rep.tablesInfo || []).map(function (t) {
+      let detail;
+      if (t.mode === 'label') {
+        detail = '채움 ' + t.filled + '칸' + (t.unmatched ? ' · 못 채움 ' + t.unmatched + '칸' : '');
+      } else {
+        const over = t.selected > t.emptyRows ? ' <b class="warn-text">⚠ ' + (t.selected - t.emptyRows) + '건 넘침 예상</b>' : '';
+        detail = (t.columns || []).map(function (c) {
+          return escapeHtml(c.header || ('열 ' + c.col)) + ' → ' + escapeHtml(fillFieldLabel(c.field));
+        }).join('<br>') + '<br><span class="fine">빈 행 ' + t.emptyRows + '개 · 선택 ' + t.selected + '건</span>' + over;
+      }
+      return '<tr><td>' + escapeHtml(locText(t.section, t.table)) + '</td><td>' + (kindLabel[t.kind] || '') + '</td><td>' + detail + '</td></tr>';
     }).join('');
-    return '<details class="gen-review" open><summary>채운 내용 검토 · ' + escapeHtml(engineLabel) + ' · ' + entries.length + '칸' +
-      (unverified ? ' · 확인 필요 ' + unverified + '칸' : (verified ? ' · 전부 결과 파일에서 확인됨' : '')) + '</summary>' +
+
+    const skipped = (rep.skipped || []).map(function (k) {
+      return '<li>' + escapeHtml(k.label) + ' — ' + escapeHtml(k.reason) + ' (' + escapeHtml(locText(k.section, k.table)) + ')</li>';
+    }).join('');
+    const unmatched = (rep.unfilledDetails || []).map(function (u) {
+      return '<li>' + escapeHtml(u.label) + ' — ' + escapeHtml(u.reason) + ' (' + escapeHtml(locText(u.section, u.table)) + ' · ' + u.row + '행 ' + u.col + '열)</li>';
+    }).join('');
+    const overflow = (rep.overflow || []).map(function (o) {
+      return '<li>' + (o.kind === 'perf' ? '실적' : '인력') + ' ' + o.total + '건 중 ' + o.filled + '건만 들어갑니다 (' + escapeHtml(locText(o.section, o.table)) + ' · 빈 행 부족)</li>';
+    }).join('');
+    const previews = (rep.previews || []).map(function (pv) {
+      return '<div class="gen-pv-title">' + escapeHtml(locText(pv.section, pv.table)) + '</div><div class="gen-review-wrap"><table class="gen-review-table"><tbody>' +
+        pv.rows.map(function (row) { return '<tr>' + row.map(function (c) { return '<td>' + escapeHtml(c) + '</td>'; }).join('') + '</tr>'; }).join('') +
+        '</tbody></table></div>';
+    }).join('');
+    const list = function (title, html) { return html ? '<div class="gen-sub">' + title + '</div><ul class="gen-skipped">' + html + '</ul>' : ''; };
+
+    return '<details class="gen-review" open><summary>' + (opts.preview ? '반영 예정' : '채운 내용 검토') + ' · ' + escapeHtml(engineLabel) + ' · ' + entries.length + '칸' +
+      (opts.preview ? '' : (unverified ? ' · 확인 필요 ' + unverified + '칸' : (verified ? ' · 전부 결과 파일에서 확인됨' : ''))) + '</summary>' +
       (notes.length ? '<div class="gen-warn">' + notes.join('<br>') + '</div>' : '') +
+      (maps ? '<div class="gen-sub">표 매핑</div><div class="gen-review-wrap"><table class="gen-review-table"><thead><tr><th>위치</th><th>종류</th><th>열 매핑 · 용량</th></tr></thead><tbody>' + maps + '</tbody></table></div>' : '') +
       (entries.length
-        ? '<div class="gen-review-wrap"><table class="gen-review-table"><thead><tr><th>항목</th><th>입력값</th><th>출처</th><th>위치</th><th>검증</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
-        : '<div class="gen-warn">채워진 칸이 없습니다.</div>') +
+        ? '<div class="gen-sub">' + (opts.preview ? '들어갈 값' : '채운 값') + '</div><div class="gen-review-wrap"><table class="gen-review-table"><thead><tr><th>항목</th><th>입력값</th><th>출처</th><th>위치</th><th>검증</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+        : '<div class="gen-warn">채워질 칸이 없습니다.</div>') +
       (rep.entriesTruncated ? '<div class="gen-warn">칸이 많아 일부만 표시했습니다.</div>' : '') +
-      (skipped ? '<ul class="gen-skipped">' + skipped + '</ul>' : '') +
-      '<div class="gen-note">위치는 파일 구조(구역·표·행·열) 기준입니다. 쪽 번호는 한컴에서 문서를 열어야 정해지므로 표시하지 않습니다.</div></details>';
+      list('넘침 (표에 빈 행이 모자람)', overflow) +
+      list('못 채운 항목 (라벨은 찾았지만 값이 없거나 빈 칸이 없음)', unmatched) +
+      list('건너뜀 (정책)', skipped) +
+      (previews ? '<details class="gen-pv"><summary>채워진 표 미리보기 (앞부분)</summary>' + previews + '</details>' : '') +
+      '<div class="gen-note">위치는 파일 구조(구역·표·행·열) 기준입니다. 쪽 번호는 한컴에서 문서를 열어야 정해지므로 표시하지 않습니다. 결과는 새 파일로 저장되며 올린 원본은 바뀌지 않습니다.</div></details>';
   }
 
-  function finishGenerate(results, btn) {
+  function finishGenerate(results, btn, opts) {
+    opts = opts || {};
     btn.disabled = false;
-    btn.textContent = '다음 · 서식 생성';
+    btn.textContent = opts.demo ? '' : '서식 다시 만들기';
 
     const ok = results.filter(function (r) { return r.ok; });
     const fail = results.filter(function (r) { return !r.ok; });
@@ -1904,12 +2184,12 @@
 
           // 골랐는데 넣을 표가 없으면 그 사실을 분명히 알린다
           const found = rep.foundTables || [];
-          if (selectedPerf.size && !rep.perf && found.indexOf('perf') === -1) {
+          if (!opts.demo && selectedPerf.size && !rep.perf && found.indexOf('perf') === -1) {
             warns.push('⚠ 실적 ' + selectedPerf.size + '건을 골랐지만 이 문서에 ' +
               '실적표가 없어 넣지 못했습니다. 표 머리글에 과업명·발주처·계약금액 같은 ' +
               '칸이 있는 서식이어야 합니다.');
           }
-          if (selectedHR.size && !rep.hr && found.indexOf('hr') === -1) {
+          if (!opts.demo && selectedHR.size && !rep.hr && found.indexOf('hr') === -1) {
             warns.push('⚠ 인력 ' + selectedHR.size + '명을 골랐지만 이 문서에 ' +
               '인력표가 없어 넣지 못했습니다.');
           }
@@ -1926,7 +2206,8 @@
             renderFillReview(r.out) +
             '<div class="gen-links">' +
               '<button type="button" class="btn-primary gen-dl" data-i="' + i + '">작성된 서식 내려받기</button> ' +
-              '<button type="button" class="btn-ghost gen-src" data-i="' + i + '">원본 내려받기</button>' +
+              '<button type="button" class="btn-ghost gen-src" data-i="' + i + '">올린 파일(원본) 받기</button> ' +
+              (r.form.sourceFile ? '<button type="button" class="btn-ghost gen-hwp" data-i="' + i + '">HWP 원본 받기</button>' : '') +
             '</div>' +
           '</div>';
         }).join('') +
@@ -1958,6 +2239,9 @@
         }
       });
     });
+    document.querySelectorAll('.gen-hwp').forEach(function (b) {
+      b.addEventListener('click', function () { const r = ok[Number(b.dataset.i)]; if (r && r.form.sourceFile) saveFile(r.form.sourceFile); });
+    });
     document.querySelectorAll('.gen-src').forEach(function (b) {
       b.addEventListener('click', function () {
         const r = ok[Number(b.dataset.i)];
@@ -1968,14 +2252,14 @@
     // 아래 검토 표를 확인한 뒤 버튼으로 받게 한다. 원본(올린 파일)은 변경하지 않고 별도 이름으로 저장된다.
 
     // 서식이 나왔으면 다음 단계로 넘어갈 수 있게 한다
-    if (ok.length) {
+    if (ok.length && !opts.demo) {
       const fb = document.getElementById('fill-forms');
       fb.textContent = '서식 다시 만들기';
       fb.className = 'btn-ghost';
       document.getElementById('go-proposal').style.display = '';
     }
 
-    toast(ok.length ? '서식을 생성했습니다. 아래 검토 표를 확인한 뒤 내려받으세요.' : '서식 생성에 실패했습니다.');
+    toast(ok.length ? (opts.demo ? '가상 데이터로 예시 서식을 채웠습니다. 아래 검토 표를 확인하세요.' : '서식을 생성했습니다. 아래 검토 표를 확인한 뒤 내려받으세요.') : '서식 생성에 실패했습니다.');
   }
 
   // ── 제안서 작성 (아직 목업) ──
@@ -2782,7 +3066,7 @@
 
   function initProposeModal() {
     initUpload();
-    [['sample-staff', 'staff'], ['sample-performance', 'performance']].forEach(function (item) {
+    [['sample-staff', 'staff'], ['sample-performance', 'performance'], ['sample-mixed', 'mixed']].forEach(function (item) {
       document.getElementById(item[0]).addEventListener('click', function () {
         const button = document.getElementById(item[0]);
         button.disabled = true;
@@ -2795,7 +3079,7 @@
             }
             // 다운로드와 함께 아래 업로드 목록에도 바로 올려 클릭만으로 다음 단계를 체험하게 한다.
             handleFiles([base64ToFile(result.dataBase64, result.name, 'application/hwp+zip')]);
-            toast('합성 예시 HWPX를 내려받고 업로드 목록에 추가했습니다. 가상 데이터만 포함됩니다.');
+            toast('빈 예시 서식을 내려받고 업로드 목록에 추가했습니다. 인력·실적을 고른 뒤 자동작성해 보세요.');
           })
           .withFailureHandler(function (error) {
             button.disabled = false;
@@ -2817,5 +3101,7 @@
       copyTables([{ title: '참여인력', rows: hrTable() }]);
     });
     document.getElementById('fill-forms').addEventListener('click', generateForms);
+    document.getElementById('preview-forms').addEventListener('click', previewForms);
+    document.getElementById('demo-run').addEventListener('click', runDemo);
   }
 </script>

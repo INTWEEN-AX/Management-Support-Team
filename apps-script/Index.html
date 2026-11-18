@@ -332,6 +332,17 @@
           <div class="propose-meta" id="propose-bid-meta"></div>
         </header>
 
+        <details class="first-run" open>
+          <summary>처음이신가요? 4단계로 서식을 채웁니다</summary>
+          <ol>
+            <li><b>공고 확인</b> — 아래 1단계에서 입찰공고 첨부를 확인합니다.</li>
+            <li><b>서식 올리기</b> — 제안요청서·서식 파일(<b>HWP 또는 HWPX</b>)을 올립니다. HWP는 브라우저 안에서 HWPX로 바뀌며 원본 HWP는 서버로 보내지 않습니다.</li>
+            <li><b>사람·실적 고르기</b> — 목록에서 클릭해 담고, 아래 <b>선택한 항목</b>에서 빠진 값(확인 필요)을 확인하고 ✕로 뺍니다.</li>
+            <li><b>미리보기 → 생성</b> — <b>반영 미리보기</b>로 어느 표 어느 칸에 들어가는지 확인한 뒤 <b>서식 자동작성</b>을 누릅니다. 결과는 새 파일이며 원본은 그대로입니다.</li>
+          </ol>
+          <p class="fine">먼저 연습하려면 2단계의 <b>예시 서식</b>을 내려받거나 <b>가상 데이터로 체험</b>을 눌러 보세요. 실제 인력·실적·연락처는 쓰이지 않습니다. 제출 전에는 반드시 한컴에서 결과를 열어 확인하세요.</p>
+        </details>
+
         <!-- ── 1단계 ── -->
         <section class="step-card">
           <div class="step-head">
@@ -359,9 +370,13 @@
             <a href="https://www.hancom.com/support/faqCenter/faq/detail/3128" target="_blank" rel="noopener">한컴 HWP 일괄 변환기 안내 →</a>
           </div>
           <div class="sample-actions" aria-label="합성 예시 서식">
-            <div><strong>합성 예시로 먼저 확인</strong><span>실제 인력·실적 대신 가상 데이터만 넣은 HWPX를 만듭니다. DB에 저장하지 않습니다.</span></div>
+            <div><strong>합성 예시로 먼저 확인</strong><span>빈 예시 서식(구조가 서로 다름)을 내려받아 올리거나, 가상 데이터로 채운 결과를 바로 볼 수 있습니다. DB·Drive에 저장하지 않습니다.</span></div>
             <button type="button" class="btn-ghost" id="sample-staff">참여인력 예시 HWPX</button>
             <button type="button" class="btn-ghost" id="sample-performance">수행실적 예시 HWPX</button>
+            <button type="button" class="btn-ghost" id="sample-mixed">종합 예시 HWPX (표 3개)</button>
+            <span class="demo-group"><label for="demo-kind" class="sr-only">체험할 예시 서식</label>
+              <select id="demo-kind"><option value="staff">참여인력</option><option value="performance">수행실적</option><option value="mixed">종합</option></select>
+              <button type="button" class="btn-primary" id="demo-run">가상 데이터로 체험</button></span>
           </div>
           <label class="upload-zone" id="upload-zone">
             <input type="file" id="upload-input" multiple accept=".hwpx,.pdf,.hwp" hidden>
@@ -440,10 +455,13 @@
       </div>
 
       <div class="propose-dock">
-        <div class="propose-selected" id="propose-selected">선택 없음</div>
+        <div id="fill-preview" class="fill-preview" style="display:none" role="region" aria-label="반영 미리보기"></div>
+        <div class="propose-selected" id="propose-selected" aria-live="polite">선택 없음</div>
+        <div class="selected-tray" id="selected-tray" aria-label="선택한 항목"></div>
         <div class="propose-actions">
           <button type="button" class="btn-ghost" id="copy-perf">실적표 복사</button>
           <button type="button" class="btn-ghost" id="copy-hr">인력표 복사</button>
+          <button type="button" class="btn-ghost" id="preview-forms">반영 미리보기</button>
           <button type="button" class="btn-primary" id="fill-forms">서식 자동작성</button>
           <button type="button" class="btn-primary" id="go-proposal" style="display:none">제안서 작성하기 →</button>
         </div>

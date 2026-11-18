@@ -303,20 +303,36 @@ function readDocsFromUploads(payload) {
  * 드라이브에 저장하지 않고 base64 로 반환하면 브라우저가 바로 내려받는다.
  */
 function fillFormFromUpload(payload) {
+  return fillCore_(payload, false);
+}
+
+/**
+ * 생성 전 반영 미리보기 — 파일을 만들지 않고 어느 표의 어느 칸에 무엇이 들어갈지만 계산한다.
+ * 같은 채우기 로직(fillCore_)을 쓰므로 미리보기와 실제 결과가 어긋나지 않는다.
+ */
+function previewFillFromUpload(payload) {
+  var r = fillCore_(payload, true);
+  return { report: r.report, missing: r.missing, dummy: r.dummy };
+}
+
+/** payload.demoRows 가 있으면 DB 대신 합성 데이터를 쓴다 (예시 체험 전용, 시트를 읽지 않는다). */
+function fillCore_(payload, previewOnly) {
   var name = String(payload && payload.name || '');
   if (!/\.hwpx$/i.test(name)) {
     throw new Error('hwpx 만 채울 수 있습니다: ' + name);
   }
 
-  var perfRows = pickPerfRows_(payload.selection && payload.selection.perfKeys);
-  var hrRows = pickHrRows_(payload.selection && payload.selection.hrNames);
-  var company = getCompanyInfo();
-  var bidCtx = buildBidContext_(payload.bidNo, payload.bidOrd);
+  var demo = payload.demoRows || null;
+  var perfRows = demo ? demo.perf : pickPerfRows_(payload.selection && payload.selection.perfKeys);
+  var hrRows = demo ? demo.hr : pickHrRows_(payload.selection && payload.selection.hrNames);
+  var company = demo ? demo.company : getCompanyInfo();
+  var bidCtx = demo ? demo.bid : buildBidContext_(payload.bidNo, payload.bidOrd);
 
   var parts = Utilities.unzip(blobFromUpload_(payload).setContentType('application/zip'));
   var report = { company: 0, bid: 0, perf: 0, hr: 0, tables: 0,
                  unfilled: [], overflow: [], emptyTables: [], foundTables: [],
-                 entries: [], skipped: [] };
+                 entries: [], skipped: [], tablesInfo: [], unfilledDetails: [], previews: [],
+                 selected: { perf: perfRows.length, hr: hrRows.length } };
   var out = [];
 
   parts.forEach(function (part) {
@@ -337,6 +353,10 @@ function fillFormFromUpload(payload) {
     out.push(Utilities.newBlob(sectionXml, 'application/xml', part.getName()));
   });
 
+  if (previewOnly) {
+    return { report: JSON.parse(JSON.stringify(report)), missing: company._missing || [], dummy: company._dummy || [] };
+  }
+
   // mimetype 엔트리를 맨 앞으로 (hwpx/OPC 규약)
   out.sort(function (a, b) {
     return (a.getName() === 'mimetype' ? 0 : 1) - (b.getName() === 'mimetype' ? 0 : 1);
@@ -349,6 +369,7 @@ function fillFormFromUpload(payload) {
     name: outName,
     dataBase64: Utilities.base64Encode(Utilities.zip(out, outName).getBytes()),
     report: report,
+    demo: !!demo,
     missing: company._missing || [],
     dummy: company._dummy || []
   }));
@@ -573,13 +594,42 @@ function fillTable_(tbl, data, report, loc) {
     return tr.getChildren().filter(function (c) { return c.getName() === 'tc'; });
   });
 
+  loc = loc || {};
+  var before = report.entries.length;
   var found = findHeaderRow_(grid);
   if (found) {
     if (report.foundTables.indexOf(found.kind) === -1) report.foundTables.push(found.kind);
-    fillRepeatTable_(grid, found.row, found.cols, data[found.kind], report, found.kind, loc || {});
-    return;
+    var empties = 0;
+    for (var er = found.row + 1; er < grid.length; er++) {
+      if (grid[er].every(function (tc) { return isEmptyCell_(collectText_(tc)); })) empties++;
+    }
+    var fields = [];
+    Object.keys(found.cols).forEach(function (ci) {
+      fields.push({ col: Number(ci) + 1, header: collectText_(grid[found.row][Number(ci)]), field: found.cols[ci] });
+    });
+    report.tablesInfo.push({
+      section: loc.section || '', table: loc.table || 0, kind: found.kind, mode: 'repeat',
+      headerRow: found.row + 1, columns: fields, emptyRows: empties,
+      selected: (data[found.kind] || []).length
+    });
+    fillRepeatTable_(grid, found.row, found.cols, data[found.kind], report, found.kind, loc);
+  } else {
+    var unmatched0 = report.unfilledDetails.length;
+    fillLabelTable_(grid, data, report, loc);
+    var wrote = report.entries.length - before, unmatched = report.unfilledDetails.length - unmatched0;
+    if (wrote || unmatched) {
+      report.tablesInfo.push({ section: loc.section || '', table: loc.table || 0, kind: 'label', mode: 'label',
+        filled: wrote, unmatched: unmatched });
+    }
   }
-  fillLabelTable_(grid, data, report, loc || {});
+  if (report.entries.length > before && report.previews.length < 12) {
+    report.previews.push({
+      section: loc.section || '', table: loc.table || 0,
+      rows: grid.slice(0, 14).map(function (row) {
+        return row.slice(0, 8).map(function (tc) { return collectText_(tc).slice(0, 40); });
+      })
+    });
+  }
 }
 
 /**
@@ -671,7 +721,8 @@ function fillRepeatTable_(grid, headerRow, cols, rows, report, kind, loc) {
     report.overflow.push({
       kind: kind,
       filled: used,
-      total: rows.length
+      total: rows.length,
+      section: loc.section || '', table: loc.table || 0
     });
   }
 }
@@ -734,7 +785,13 @@ function fillLabelTable_(grid, ctx, report, loc) {
       var bucket = 'company';
       if (COMPANY_LABEL_MAP[key]) value = ctx.company[COMPANY_LABEL_MAP[key]];
       else if (BID_LABEL_MAP[key]) { value = ctx.bid[BID_LABEL_MAP[key]]; bucket = 'bid'; }
-      if (!value) continue;
+      if (!value) {
+        if (COMPANY_LABEL_MAP[key] || BID_LABEL_MAP[key]) {
+          report.unfilledDetails.push({ label: text, section: loc.section || '', table: loc.table || 0,
+            row: r + 1, col: c + 1, reason: '값 없음 — 회사정보/공고정보에 해당 값이 비어 있습니다' });
+        }
+        continue;
+      }
 
       // 오른쪽 칸
       if (c + 1 < grid[r].length && isEmptyCell_(collectText_(grid[r][c + 1]))) {
@@ -750,6 +807,8 @@ function fillLabelTable_(grid, ctx, report, loc) {
         }
       }
       report.unfilled.push(text);
+      report.unfilledDetails.push({ label: text, section: loc.section || '', table: loc.table || 0,
+        row: r + 1, col: c + 1, reason: '값을 넣을 빈 칸이 라벨 오른쪽/아래에 없습니다' });
     }
   }
 }

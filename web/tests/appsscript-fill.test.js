@@ -94,5 +94,5 @@ test('overflow is reported and unmatched forms leave the file untouched', () => 
   const out = fill(loadGs({ hr: people }), archive([table([['A', 'B'], [null, null]])]), { hrNames: ['가상갑'] });
   assert.equal(out.report.hr, 0); assert.equal(out.report.entries.length, 0);
   const one = fill(loadGs({ hr: people }), archive([table([['연번', '성명', '직위'], [null, null, null]])]), { hrNames: ['가상갑', '가상을'] });
-  assert.deepEqual(one.report.overflow, [{ kind: 'hr', filled: 1, total: 2 }]);
+  assert.deepEqual(one.report.overflow, [{ kind: "hr", filled: 1, total: 2, section: "Contents/section0.xml", table: 1 }]);
 });

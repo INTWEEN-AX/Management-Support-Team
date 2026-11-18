@@ -26,14 +26,14 @@ export async function convert(bytes) {
   const out = new JSZip();
   out.file('mimetype', CANONICAL_MIMETYPE, { compression: 'STORE' });
   let total = 0;
-  const xml = [];
+  const xml = [], names = [];
   for (const entry of entries) {
     if (entry.name === 'mimetype') continue;
     const data = await entry.async('uint8array');
     total += data.length;
     if (total > EXPANDED) throw new Error('HWPX 압축 해제 크기 제한 초과');
     out.file(entry.name, data, { compression: 'DEFLATE', date: new Date(Date.UTC(2020, 0, 1)) });
-    if (entry.name.endsWith('.xml') || entry.name.endsWith('.hpf')) xml.push(new TextDecoder().decode(data));
+    if (entry.name.endsWith('.xml') || entry.name.endsWith('.hpf')) { xml.push(new TextDecoder().decode(data)); names.push(entry.name); }
   }
   for (const name of ['META-INF/container.xml', 'Contents/content.hpf', 'Contents/header.xml', 'Contents/section0.xml']) {
     if (!out.file(name)) throw new Error('HWPX 필수 항목 누락: ' + name);
@@ -42,7 +42,7 @@ export async function convert(bytes) {
   if (output.length > MAX) throw new Error('변환 HWPX가 10MB 제한을 초과했습니다.');
   const view = new DataView(output.buffer, output.byteOffset, output.byteLength);
   if (view.getUint32(0, true) !== 0x04034b50 || view.getUint16(8, true) !== 0 || new TextDecoder().decode(output.slice(30, 30 + view.getUint16(26, true))) !== 'mimetype') throw new Error('HWPX ZIP 구조 오류');
-  return { output, xml };
+  return { output, xml, names };
 }
 if (typeof self !== 'undefined') self.onmessage = async event => {
   try { const result = await convert(new Uint8Array(event.data)); self.postMessage(result, [result.output.buffer]); }

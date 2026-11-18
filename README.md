@@ -322,3 +322,14 @@ distribution-only and unsupported formats fail with Hancom Save As guidance.
 Generated HWPX is checked before entering the existing flow. Always compare final
 layout in Hancom; conversion can lose document features. Synthetic sample buttons
 remain available. See [converter review, licenses and rebuild instructions](tools/hwp-converter/THIRD_PARTY.md).
+
+### Apps Script: guided HWP/HWPX auto-fill (first-run flow)
+
+1. Upload the RFP/forms (**HWP or HWPX**). HWP 5.0–5.1 is converted in the browser (progress, cancel, retry; the original HWP is kept in the tab and can be downloaded untouched; it is never sent to a server). The converted HWPX is checked for structure (sections/tables) before it enters the fill flow. Layout fidelity (fonts, margins, shapes) is **not** guaranteed — compare with the original in Hancom.
+2. Click people/performances to add them; the **selected items** tray shows counts, flags missing fields ("확인 필요" – never invented) and lets you remove each item.
+3. **반영 미리보기** shows, per table, the header→field mapping, empty-row capacity vs. selected count, and the exact values that will be written. Mapping is automatic by header names; manual column mapping exists only in the `web/` tool.
+4. **서식 자동작성** writes a **new** file (`…_작성_<time>.hwpx`). The review lists filled values with source and location (section · table · row · column), overflow, unmatched labels and policy skips (birth date is never written). Page numbers are not shown because HWPX files do not store reliable pagination.
+
+Practice without real data: use the example templates (staff / performance / combined) or **가상 데이터로 체험** (synthetic rows only; nothing is read from or written to the sheet).
+
+Deployment is unchanged: `clasp push` + redeploy the web app. Note `Utilities.zip` does not guarantee that `mimetype` stays the first STORED entry; open results in Hancom once after deploying.
