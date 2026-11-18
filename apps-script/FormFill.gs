@@ -315,7 +315,8 @@ function fillFormFromUpload(payload) {
 
   var parts = Utilities.unzip(blobFromUpload_(payload).setContentType('application/zip'));
   var report = { company: 0, bid: 0, perf: 0, hr: 0, tables: 0,
-                 unfilled: [], overflow: [], emptyTables: [], foundTables: [] };
+                 unfilled: [], overflow: [], emptyTables: [], foundTables: [],
+                 entries: [], skipped: [] };
   var out = [];
 
   parts.forEach(function (part) {
@@ -324,13 +325,16 @@ function fillFormFromUpload(payload) {
     var doc = XmlService.parse(part.getDataAsString('UTF-8'));
     var tbls = [];
     collectTableElements_(doc.getRootElement(), tbls);
-    tbls.forEach(function (tbl) {
+    var firstEntry = report.entries.length;
+    tbls.forEach(function (tbl, ti) {
       report.tables++;
-      fillTable_(tbl, { company: company, bid: bidCtx, perf: perfRows, hr: hrRows }, report);
+      fillTable_(tbl, { company: company, bid: bidCtx, perf: perfRows, hr: hrRows }, report,
+        { section: part.getName(), table: ti + 1 });
     });
 
-    out.push(Utilities.newBlob(XmlService.getRawFormat().format(doc),
-      'application/xml', part.getName()));
+    var sectionXml = XmlService.getRawFormat().format(doc);
+    verifyEntries_(report.entries, firstEntry, sectionXml);
+    out.push(Utilities.newBlob(sectionXml, 'application/xml', part.getName()));
   });
 
   // mimetype 엔트리를 맨 앞으로 (hwpx/OPC 규약)
@@ -561,7 +565,7 @@ function isEmptyCell_(s) {
 }
 
 /** 표 하나를 채운다 — 반복형이면 목록을, 라벨형이면 회사정보를 */
-function fillTable_(tbl, data, report) {
+function fillTable_(tbl, data, report, loc) {
   var trs = tbl.getChildren().filter(function (c) { return c.getName() === 'tr'; });
   if (!trs.length) return;
 
@@ -572,10 +576,10 @@ function fillTable_(tbl, data, report) {
   var found = findHeaderRow_(grid);
   if (found) {
     if (report.foundTables.indexOf(found.kind) === -1) report.foundTables.push(found.kind);
-    fillRepeatTable_(grid, found.row, found.cols, data[found.kind], report, found.kind);
+    fillRepeatTable_(grid, found.row, found.cols, data[found.kind], report, found.kind, loc || {});
     return;
   }
-  fillLabelTable_(grid, data, report);
+  fillLabelTable_(grid, data, report, loc || {});
 }
 
 /**
@@ -624,7 +628,7 @@ function countMapped_(cols) {
 }
 
 /** 머리글 아래 빈 행에 목록을 한 줄씩 채운다 */
-function fillRepeatTable_(grid, headerRow, cols, rows, report, kind) {
+function fillRepeatTable_(grid, headerRow, cols, rows, report, kind, loc) {
   var used = 0;
   if (!rows || !rows.length) {
     // 채울 표는 찾았는데 넣을 데이터가 없다 — 화면에서 알려줘야 한다
@@ -644,8 +648,19 @@ function fillRepeatTable_(grid, headerRow, cols, rows, report, kind) {
       var idx = Number(ci);
       if (idx >= cells.length) return;
       var field = cols[ci];
+      // 개인정보 정책: 생년월일은 서식에 자동으로 넣지 않는다 (사람이 확인 후 직접 기입)
+      if (field === 'birthDate') { noteSkipped_(report, '생년월일', loc); return; }
       var value = (field === '_index') ? String(used + 1) : (item[field] || '');
-      if (value !== '' && setCellText_(cells[idx], String(value))) wrote++;
+      if (value !== '' && setCellText_(cells[idx], String(value))) {
+        wrote++;
+        recordEntry_(report, {
+          kind: kind, field: field, label: collectText_(grid[headerRow][idx]) || field,
+          value: String(value),
+          source: field === '_index' ? '자동 번호'
+            : (kind === 'perf' ? '수행실적 DB · ' + (item.taskName || '') : '인력현황 DB · ' + (item.name || '')),
+          section: loc.section || '', table: loc.table || 0, row: r + 1, col: idx + 1
+        });
+      }
     });
     if (!wrote) continue;      // 한 칸도 못 썼으면 이 행은 쓴 걸로 치지 않는다
     used++;
@@ -661,14 +676,60 @@ function fillRepeatTable_(grid, headerRow, cols, rows, report, kind) {
   }
 }
 
+var REPORT_ENTRY_LIMIT = 1000;
+
+/**
+ * 채운 칸 기록 — 미리보기/검토 화면용.
+ * 위치는 hwpx 에서 신뢰할 수 있는 정보(구역 파일, 표 순번, 행·열)만 남긴다.
+ * 쪽 번호는 한컴이 편집 시 레이아웃으로 계산하므로 파일만으로는 알 수 없어 기록하지 않는다.
+ */
+function recordEntry_(report, entry) {
+  if (report.entries.length < REPORT_ENTRY_LIMIT) report.entries.push(entry);
+  else report.entriesTruncated = true;
+}
+
+function recordLabelEntry_(report, bucket, ctx, label, value, loc, row, col) {
+  recordEntry_(report, {
+    kind: bucket, field: label, label: label, value: String(value),
+    source: bucket === 'bid' ? '입찰공고 ' + ((ctx.bid && ctx.bid.bidNo) || '') : '회사 기본정보',
+    section: loc.section || '', table: loc.table || 0, row: row, col: col
+  });
+}
+
+function noteSkipped_(report, label, loc) {
+  var key = label + '|' + (loc.section || '') + '|' + (loc.table || 0);
+  for (var i = 0; i < report.skipped.length; i++) if (report.skipped[i].key === key) return;
+  report.skipped.push({ key: key, label: label, reason: '개인정보 정책상 자동으로 채우지 않았습니다. 직접 확인해 기입하세요.',
+    section: loc.section || '', table: loc.table || 0 });
+}
+
+/** 결과 XML 을 다시 읽어 기록한 값이 실제로 들어갔는지 확인한다 */
+function verifyEntries_(entries, from, xml) {
+  for (var i = from; i < entries.length; i++) {
+    var v = entries[i].value;
+    var esc = v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    entries[i].verified = xml.indexOf(esc) !== -1 || xml.indexOf(v) !== -1;
+  }
+}
+
 /** 라벨 오른쪽(없으면 아래) 빈 칸에 회사정보를 넣는다 */
-function fillLabelTable_(grid, ctx, report) {
+function fillLabelTable_(grid, ctx, report, loc) {
+  // '성명'은 회사 양식에서는 대표자지만 인력 이력서에서는 해당 인력의 이름이다.
+  // 같은 표에 업체명·사업자번호 같은 회사 라벨이 없으면 대표자 이름을 넣지 않는다.
+  var companyContext = false;
+  grid.forEach(function (row) {
+    row.forEach(function (tc) {
+      var k = normLabel_(collectText_(tc));
+      if (k !== '성명' && COMPANY_LABEL_MAP[k]) companyContext = true;
+    });
+  });
   for (var r = 0; r < grid.length; r++) {
     for (var c = 0; c < grid[r].length; c++) {
       var text = collectText_(grid[r][c]);
       if (!text) continue;
 
       var key = normLabel_(text);
+      if (key === '성명' && !companyContext) continue;
       var value = '';
       var bucket = 'company';
       if (COMPANY_LABEL_MAP[key]) value = ctx.company[COMPANY_LABEL_MAP[key]];
@@ -677,12 +738,16 @@ function fillLabelTable_(grid, ctx, report) {
 
       // 오른쪽 칸
       if (c + 1 < grid[r].length && isEmptyCell_(collectText_(grid[r][c + 1]))) {
-        if (setCellText_(grid[r][c + 1], String(value))) { report[bucket]++; continue; }
+        if (setCellText_(grid[r][c + 1], String(value))) {
+          report[bucket]++; recordLabelEntry_(report, bucket, ctx, text, value, loc, r + 1, c + 2); continue;
+        }
       }
       // 아래 칸 (세로형 표)
       if (r + 1 < grid.length && c < grid[r + 1].length &&
           isEmptyCell_(collectText_(grid[r + 1][c]))) {
-        if (setCellText_(grid[r + 1][c], String(value))) { report[bucket]++; continue; }
+        if (setCellText_(grid[r + 1][c], String(value))) {
+          report[bucket]++; recordLabelEntry_(report, bucket, ctx, text, value, loc, r + 2, c + 1); continue;
+        }
       }
       report.unfilled.push(text);
     }
